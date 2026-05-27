@@ -1,0 +1,83 @@
+{
+  "projects": {
+    "order-service": {
+      "app_id": "demo.order.order-service",
+      "root_path": "/path/to/demo/order-service",
+      "source_patterns": [
+        "*/src/main/java",
+        "src/main/java",
+        "*/src/main/kotlin",
+        "src/main/kotlin",
+        "*/src",
+        "src"
+      ],
+      "auto_discover_modules": true,
+      "known_modules": [
+        "order-service",
+        "order-app",
+        "order-infra"
+      ],
+      "package_prefixes": [
+        "com.example.order"
+      ]
+    },
+    "ad-gateway": {
+      "app_id": "demo.ads.ad-gateway",
+      "root_path": "/path/to/demo/ad-gateway",
+      "source_patterns": [
+        "*/src/main/java",
+        "src/main/java",
+        "*/src/main/kotlin",
+        "src/main/kotlin",
+        "*/src",
+        "src"
+      ],
+      "auto_discover_modules": true,
+      "known_modules": [
+        "ad-gateway",
+        "ad-portal",
+        "ad-api"
+      ],
+      "package_prefixes": [
+        "com.example.ads"
+      ]
+    }
+  },
+  "log_platform": {
+    "base_url": "http://localhost:9000/mock-log-query",
+    "headers": {
+      "X-Access-Id": "demo-access-id",
+      "X-Access-Token": "demo-access-token",
+      "Content-Type": "application/json"
+    },
+    "default_page_size": 100,
+    "max_page_size": 10000,
+    "query_time_range_hours": 24
+  },
+  "languages": {
+    "java": {
+      "file_extensions": [".java"],
+      "stack_pattern": "at\\s+([^(]+)\\(([^:]+):(\\d+)\\)",
+      "package_separator": ".",
+      "path_separator": "/"
+    },
+    "kotlin": {
+      "file_extensions": [".kt"],
+      "stack_pattern": "at\\s+([^(]+)\\(([^:]+):(\\d+)\\)",
+      "package_separator": ".",
+      "path_separator": "/"
+    },
+    "python": {
+      "file_extensions": [".py"],
+      "stack_pattern": "File\\s+\"([^\"]+)\",\\s+line\\s+(\\d+),\\s+in\\s+(\\w+)",
+      "package_separator": ".",
+      "path_separator": "/"
+    }
+  },
+  "search": {
+    "context_lines": 5,
+    "max_search_depth": 10,
+    "exclude_patterns": ["target", "build", ".git", "node_modules", ".idea"]
+  }
+}
+
