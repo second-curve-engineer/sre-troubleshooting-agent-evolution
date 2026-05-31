@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SRE 故障排查 Agent · V2</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+
+      <!-- ── Chat workspace ─────────────────────────── -->
+      <section class="workspace" aria-label="故障排查对话">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">SRE Troubleshooting Agent · V2</p>
+            <h1>线上故障诊断助手</h1>
+          </div>
+          <div class="status">
+            <span class="dot"></span>
+            <span id="modeLabel">Demo mode</span>
+          </div>
+        </header>
+
+        <section class="chat" id="chatLog" aria-live="polite">
+          <article class="message assistant">
+            <div class="avatar">诊断助手</div>
+            <div class="bubble intro">
+              <p>直接描述故障即可开始。默认按 <strong>prod</strong> 环境排查，也可以补充服务名、时间、trace_id、报错现象或异常栈。</p>
+            </div>
+          </article>
+        </section>
+
+        <form class="composer" id="chatForm">
+          <textarea
+            id="messageInput"
+            rows="3"
+            placeholder="例如：order-service 下单接口从 10:30 开始大量 500，trace_id 是 demo-trace-001，帮我排查。"
+          ></textarea>
+          <div class="composerActions">
+            <button type="button" id="exampleBtn">填入示例</button>
+            <button type="submit" id="sendBtn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/>
+              </svg>
+              诊断
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- ── Inspector sidebar ──────────────────────── -->
+      <aside class="inspector" aria-label="诊断过程">
+
+        <!-- tool trace: dark terminal panel -->
+        <section class="panel term">
+          <div class="panelHeader">
+            <h2>工具路径</h2>
+            <span class="badge" id="traceCount">0</span>
+          </div>
+          <div class="panelBody">
+            <ol class="timeline" id="toolTrace">
+              <li class="muted">等待用户输入…</li>
+            </ol>
+          </div>
+        </section>
+
+        <!-- evidence: light panel -->
+        <section class="panel light">
+          <div class="panelHeader">
+            <h2>证据摘要</h2>
+          </div>
+          <div class="panelBody">
+            <ul class="evidence" id="evidenceList">
+              <li class="muted">日志、异常栈和代码定位会显示在这里</li>
+            </ul>
+          </div>
+        </section>
+
+      </aside>
+    </main>
+
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

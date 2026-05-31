@@ -1,0 +1,43 @@
+{
+  "order_db": {
+    "status": "success",
+    "query_info": {
+      "app_id": "ops.akso.akso-slow-log",
+      "env": "prod",
+      "db_names": ["order_db"],
+      "query": "schema in ('order_db') AND Query_time > 3"
+    },
+    "result": {
+      "data": {
+        "logs": [
+          {
+            "timestamp": "2026-05-28T10:30:47+08:00",
+            "app_id": "ops.akso.akso-slow-log",
+            "env": "prod",
+            "schema": "order_db",
+            "host": "mysql-order-01",
+            "query_time": 5.83,
+            "lock_time": 0.02,
+            "rows_examined": 1842033,
+            "rows_sent": 20,
+            "sql": "SELECT * FROM order_item WHERE user_id = ? ORDER BY created_at DESC LIMIT 20",
+            "message": "Query_time: 5.83 Lock_time: 0.02 Rows_examined: 1842033 Rows_sent: 20 schema=order_db table=order_item"
+          },
+          {
+            "timestamp": "2026-05-28T10:31:12+08:00",
+            "app_id": "ops.akso.akso-slow-log",
+            "env": "prod",
+            "schema": "order_db",
+            "host": "mysql-order-02",
+            "query_time": 4.96,
+            "lock_time": 0.01,
+            "rows_examined": 1719921,
+            "rows_sent": 20,
+            "sql": "SELECT * FROM order_item WHERE user_id = ? ORDER BY created_at DESC LIMIT 20",
+            "message": "Query_time: 4.96 Lock_time: 0.01 Rows_examined: 1719921 Rows_sent: 20 schema=order_db table=order_item"
+          }
+        ]
+      }
+    }
+  }
+}

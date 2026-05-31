@@ -1,0 +1,64 @@
+{
+  "order-service": {
+    "status": "success",
+    "query_info": {
+      "app_id": "order-service",
+      "env": "prod",
+      "query": "SELECT * WHERE log.level = 'ERROR' AND host.deploy_env = 'prod'"
+    },
+    "result": {
+      "data": {
+        "logs": [
+          {
+            "timestamp": "2026-05-28T10:30:11+08:00",
+            "app_id": "order-service",
+            "env": "prod",
+            "log.level": "ERROR",
+            "log.trace_id": "demo-trace-001",
+            "http.path": "/api/orders",
+            "exception.type": "RemoteServiceException",
+            "exception.message": "inventory-service reserve failed",
+            "message": "create order failed, skuId=SKU-10086, userId=U-7788"
+          },
+          {
+            "timestamp": "2026-05-28T10:32:45+08:00",
+            "app_id": "order-service",
+            "env": "prod",
+            "log.level": "ERROR",
+            "log.trace_id": "demo-trace-002",
+            "http.path": "/api/orders",
+            "exception.type": "RemoteServiceException",
+            "exception.message": "inventory-service reserve failed",
+            "message": "create order failed, skuId=SKU-10086, userId=U-5511"
+          }
+        ]
+      }
+    }
+  },
+  "inventory-service": {
+    "status": "success",
+    "query_info": {
+      "app_id": "inventory-service",
+      "env": "prod",
+      "query": "SELECT * WHERE log.level = 'ERROR' AND host.deploy_env = 'prod'"
+    },
+    "result": {
+      "data": {
+        "logs": [
+          {
+            "timestamp": "2026-05-28T10:31:05+08:00",
+            "app_id": "inventory-service",
+            "env": "prod",
+            "log.level": "ERROR",
+            "log.trace_id": "demo-trace-001",
+            "http.path": "/internal/inventory/reserve",
+            "exception.type": "java.lang.NullPointerException",
+            "exception.message": "Cannot invoke \"Inventory.getAvailable()\" because \"inventory\" is null",
+            "exception.stack": "com.example.inventory.InventoryService.reserve(InventoryService.java:87)\ncom.example.inventory.InventoryController.reserve(InventoryController.java:42)",
+            "message": "reserve inventory failed, skuId=SKU-10086"
+          }
+        ]
+      }
+    }
+  }
+}
