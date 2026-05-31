@@ -1,0 +1,16 @@
+{
+  "inventory-service": {
+    "summary": "InventoryService.reserve 在库存记录为空时直接访问 inventory.getAvailable()，缺少空值保护。",
+    "file": "InventoryService.java",
+    "method": "reserve",
+    "line": 87,
+    "fix": "在进入库存预占逻辑前处理 inventory == null，并返回 INVENTORY_NOT_FOUND 这类可识别业务错误。"
+  },
+  "order-service": {
+    "summary": "OrderService.createOrder 负责下单主流程，本身主要包装下游库存异常，不是首次报错点。",
+    "file": "OrderService.java",
+    "method": "createOrder",
+    "line": 142,
+    "fix": "保留 trace_id、skuId、userId 和下游错误码，便于快速定位首次异常服务。"
+  }
+}
