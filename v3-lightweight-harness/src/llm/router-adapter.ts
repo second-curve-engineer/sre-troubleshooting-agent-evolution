@@ -1,6 +1,7 @@
 // LLM Router Adapter：为低置信路由提供 mock/真实 API 两种可替换实现。
 import { loadLlmRouterConfig, LlmRouterConfig } from "../config/env.js";
 import { RouterResult, WorkflowDecisionSchema } from "../schemas/workflow.js";
+import { buildRouterSystemPrompt } from "./router-prompt.js";
 import { z } from "zod";
 
 export type LlmRouterAdapter = {
@@ -134,15 +135,7 @@ export class OpenAiRouterAdapter implements LlmRouterAdapter {
           messages: [
             {
               role: "system",
-              content: [
-                "你是线上故障排查 Agent 的 router。",
-                "只输出 JSON，不要输出 Markdown。",
-                "JSON 字段必须包含 problemType, route, reason, confidence。",
-                "problemType 只能是 interface_error, performance, unknown。",
-                "route 只能是 trace-diagnosis, condition-log, performance, clarification。",
-                "如果信息不足，route=clarification。",
-                "如果能提取 appHint 或 traceId，可以附加这些字段。"
-              ].join("\n")
+              content: buildRouterSystemPrompt()
             },
             {
               role: "user",
