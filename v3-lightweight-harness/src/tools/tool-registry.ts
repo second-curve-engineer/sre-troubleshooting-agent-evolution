@@ -79,6 +79,10 @@ const metadata: Record<ToolName, ToolMetadata> = {
   }
 };
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class ToolRegistry {
   getMetadata(toolName: ToolName): ToolMetadata {
     return metadata[toolName];
@@ -94,6 +98,18 @@ export class ToolRegistry {
         status: "error",
         summary: `工具 ${args.toolName} 不在当前 step 白名单中`,
         outputSummary: { allowedTools: args.allowedTools }
+      };
+    }
+    if (typeof args.input.__simulateDelayMs === "number") {
+      await sleep(args.input.__simulateDelayMs);
+    }
+    if (args.input.__simulateFailure) {
+      return {
+        status: "error",
+        summary: `工具 ${args.toolName} 模拟失败`,
+        outputSummary: {
+          simulatedFailure: true
+        }
       };
     }
     return handlers[args.toolName](args.input);

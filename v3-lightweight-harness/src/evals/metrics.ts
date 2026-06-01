@@ -114,6 +114,19 @@ export function evaluateCase(args: {
     }
   }
 
+  if (args.testCase.expectedToolStatuses) {
+    for (const expected of args.testCase.expectedToolStatuses) {
+      const matched = args.state.toolTraces.some(
+        (trace) => trace.toolName === expected.toolName && trace.status === expected.status
+      );
+      checks.push({
+        name: `tool_status_${expected.toolName}_${expected.status}`,
+        passed: matched,
+        message: `expected ${expected.toolName} status=${expected.status}`
+      });
+    }
+  }
+
   return {
     id: args.testCase.id,
     passed: checks.every((check) => check.passed),

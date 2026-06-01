@@ -33,9 +33,10 @@ npm run eval
 - router adapter：默认使用 mock router；设置 `LLM_ROUTER_MODE=openai` 后，低置信路由可调用 OpenAI-compatible API。
 - step 级工具白名单。
 - tool risk level + approval policy：低/中风险工具自动审批并进入 trace，高风险工具预留人工审批。
+- tool timeout / failure handling：工具超时或失败会进入 trace 和 eval，不让 run 直接崩溃。
 - trace JSON 持久化。
 - 504 场景下的初版 self-correction policy。
-- eval runner：检查 route、tool order、evidence keywords、report fields、router token budget。
+- eval runner：检查 route、tool order、tool status、evidence keywords、report fields、router token budget。
 
 V3 带来的关键认知是：
 
@@ -62,3 +63,13 @@ export LLM_ROUTER_MODEL=gpt-4.1-mini
 ```
 
 只有 heuristic router 低置信时才会调用 LLM，高置信的 `trace_id`、`504`、`500` 等场景仍然不消耗 router token。
+
+## 工具超时配置
+
+工具调用默认超时时间为 3000ms：
+
+```bash
+export TOOL_TIMEOUT_MS=3000
+```
+
+工具超时会被记录为 `status=timeout`，并写入 trace；eval 中已有日志平台超时和慢查询平台失败的回归 case。

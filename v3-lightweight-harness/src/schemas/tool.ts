@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { ToolRiskLevelSchema } from "./approval.js";
 
-export const ToolStatusSchema = z.enum(["ok", "empty", "too_many_results", "error"]);
+export const ToolStatusSchema = z.enum(["ok", "empty", "too_many_results", "error", "timeout", "cancelled"]);
 
 export const ToolResultSchema = z.object({
   status: ToolStatusSchema,
@@ -22,6 +22,8 @@ export const ToolTraceSchema = z.object({
   toolInput: z.record(z.unknown()),
   outputSummary: z.record(z.unknown()),
   status: z.string(),
+  timeoutMs: z.number().optional(),
+  timedOut: z.boolean().default(false),
   durationMs: z.number(),
   error: z.string().nullable(),
   usedForDecision: z.boolean().default(false)

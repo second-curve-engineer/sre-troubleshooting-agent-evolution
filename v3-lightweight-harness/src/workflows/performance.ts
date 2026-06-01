@@ -4,6 +4,8 @@ import { WorkflowDefinition, WorkflowContext } from "./types.js";
 
 export async function runPerformanceDiagnosis(context: WorkflowContext): Promise<void> {
   const appId = context.state.app?.appId ?? "order-service";
+  const simulateLogTimeout = context.state.userMessage.includes("模拟日志平台超时");
+  const simulateSlowQueryFailure = context.state.userMessage.includes("模拟慢查询平台失败");
   let query = "SELECT * WHERE http.status_code = '504'";
   let retryCount = 0;
   let logResult: ToolResult;
@@ -19,7 +21,8 @@ export async function runPerformanceDiagnosis(context: WorkflowContext): Promise
         fromTime: "2026-05-28 10:30:00",
         toTime: "2026-05-28 10:35:00",
         env: "prod",
-        limit: 5
+        limit: 5,
+        ...(simulateLogTimeout && retryCount === 0 ? { __simulateDelayMs: 100 } : {})
       },
       ["query_logs_by_condition"]
     );
@@ -56,7 +59,8 @@ export async function runPerformanceDiagnosis(context: WorkflowContext): Promise
       query: "Query_time > 3",
       fromTime: "2026-05-28 10:30:00",
       toTime: "2026-05-28 10:35:00",
-      env: "prod"
+      env: "prod",
+      ...(simulateSlowQueryFailure ? { __simulateFailure: true } : {})
     },
     ["query_mysql_slow_log"]
   );

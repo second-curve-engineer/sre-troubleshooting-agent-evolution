@@ -11,6 +11,11 @@ export type EvalCase = {
   expectedConfidence?: "high" | "medium" | "low";
   expectedUsedLlm?: boolean;
   maxRouterTokens?: number;
+  toolTimeoutMs?: number;
+  expectedToolStatuses?: Array<{
+    toolName: ToolName;
+    status: "ok" | "empty" | "too_many_results" | "error" | "timeout" | "cancelled";
+  }>;
   expectedApprovals?: Array<{
     toolName: ToolName;
     riskLevel: "low" | "medium" | "high" | "critical";
@@ -74,5 +79,32 @@ export const evalCases: EvalCase[] = [
     expectedEvidenceKeywords: ["router=llm", "Query_time"],
     expectedConfidence: "medium",
     expectedUsedLlm: true
+  },
+  {
+    id: "tool_timeout_log_platform",
+    input: "order-service 下单接口从 10:30 开始大量 504，模拟日志平台超时，帮我排查。",
+    expectedRoute: "performance",
+    expectedTools: ["resolve_app", "query_logs_by_condition"],
+    expectedEvidenceKeywords: ["执行超过", "证据不足"],
+    expectedConfidence: "low",
+    expectedUsedLlm: false,
+    maxRouterTokens: 0,
+    toolTimeoutMs: 20,
+    expectedToolStatuses: [
+      { toolName: "query_logs_by_condition", status: "timeout" }
+    ]
+  },
+  {
+    id: "tool_failure_slow_query_platform",
+    input: "order-service 下单接口从 10:30 开始大量 504，模拟慢查询平台失败，帮我排查。",
+    expectedRoute: "performance",
+    expectedTools: ["resolve_app", "query_logs_by_condition", "query_logs_by_condition", "query_mysql_slow_log"],
+    expectedEvidenceKeywords: ["模拟失败", "证据不足"],
+    expectedConfidence: "low",
+    expectedUsedLlm: false,
+    maxRouterTokens: 0,
+    expectedToolStatuses: [
+      { toolName: "query_mysql_slow_log", status: "error" }
+    ]
   }
 ];

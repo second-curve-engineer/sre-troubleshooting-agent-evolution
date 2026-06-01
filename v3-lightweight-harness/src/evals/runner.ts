@@ -4,10 +4,12 @@ import { evalCases } from "./cases.js";
 import { EvalCaseResult, evaluateCase } from "./metrics.js";
 
 export async function runEvals(): Promise<EvalCaseResult[]> {
-  const runner = new HarnessRunner();
   const results: EvalCaseResult[] = [];
 
   for (const testCase of evalCases) {
+    const runner = new HarnessRunner({
+      toolExecution: testCase.toolTimeoutMs ? { timeoutMs: testCase.toolTimeoutMs } : undefined
+    });
     const result = await runner.run(testCase.input, `eval-${testCase.id}`);
     results.push(
       evaluateCase({

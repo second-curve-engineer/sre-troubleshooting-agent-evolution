@@ -8,6 +8,7 @@ import { ToolName, ToolRegistry } from "../tools/tool-registry.js";
 import { generateMockDiagnosis } from "../llm/mock-llm.js";
 import { getWorkflow } from "../workflows/registry.js";
 import { resolveAppForWorkflow } from "../workflows/shared.js";
+import { loadToolExecutionConfig, ToolExecutionConfig } from "../config/env.js";
 import { ApprovalPolicy } from "./approval-policy.js";
 import { EvidenceStore } from "./evidence-store.js";
 import { SelfCorrectionPolicy } from "./policies.js";
@@ -19,6 +20,14 @@ export class HarnessRunner {
   private readonly traces = new TraceStore();
   private readonly policy = new SelfCorrectionPolicy();
   private readonly approvalPolicy = new ApprovalPolicy("auto");
+  private readonly toolExecution: ToolExecutionConfig;
+
+  constructor(options: { toolExecution?: Partial<ToolExecutionConfig> } = {}) {
+    this.toolExecution = {
+      ...loadToolExecutionConfig(),
+      ...options.toolExecution
+    };
+  }
 
   async run(userMessage: string, sessionId = "cli"): Promise<{ state: RunState; tracePath: string }> {
     const runId = `run-${new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${randomUUID().slice(0, 8)}`;
@@ -76,6 +85,7 @@ export class HarnessRunner {
     const start = performance.now();
     let result: ToolResult;
     let error: string | null = null;
+    let timedOut = false;
     try {
       const metadata = this.tools.getMetadata(toolName);
       // 所有工具调用先过 approval policy，再进入 registry，保证风险控制和 trace 记录一致。
@@ -107,6 +117,8 @@ export class HarnessRunner {
           toolInput: input,
           outputSummary: result.outputSummary ?? {},
           status: result.status,
+          timeoutMs: this.toolExecution.timeoutMs,
+          timedOut: false,
           durationMs: Math.round(performance.now() - start),
           error: result.summary,
           usedForDecision: true
@@ -115,13 +127,22 @@ export class HarnessRunner {
         return result;
       }
 
-      result = await this.tools.invoke({ toolName, input, allowedTools });
+      result = await this.withTimeout(
+        this.tools.invoke({ toolName, input, allowedTools }),
+        this.toolExecution.timeoutMs,
+        toolName
+      );
     } catch (caught) {
       error = caught instanceof Error ? caught.message : String(caught);
+      timedOut = caught instanceof ToolTimeoutError;
       result = {
-        status: "error",
+        status: timedOut ? "timeout" : "error",
         summary: error,
-        outputSummary: {}
+        outputSummary: timedOut
+          ? {
+              timeoutMs: this.toolExecution.timeoutMs
+            }
+          : {}
       };
     }
     const trace: ToolTrace = {
@@ -135,12 +156,29 @@ export class HarnessRunner {
       toolInput: input,
       outputSummary: result.outputSummary ?? {},
       status: result.status,
+      timeoutMs: this.toolExecution.timeoutMs,
+      timedOut,
       durationMs: Math.round(performance.now() - start),
       error,
       usedForDecision: true
     };
     state.toolTraces.push(trace);
     return result;
+  }
+
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, toolName: ToolName): Promise<T> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => {
+        reject(new ToolTimeoutError(`工具 ${toolName} 执行超过 ${timeoutMs}ms，已按 timeout 处理`));
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([promise, timeoutPromise]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
   }
 
   private async persist(state: RunState): Promise<{ state: RunState; tracePath: string }> {
@@ -153,3 +191,5 @@ export class HarnessRunner {
     return { state, tracePath };
   }
 }
+
+class ToolTimeoutError extends Error {}
