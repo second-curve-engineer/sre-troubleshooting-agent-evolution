@@ -1,6 +1,7 @@
 // LLM Router Adapter：为低置信路由提供 mock/真实 API 两种可替换实现。
 import { loadLlmRouterConfig, LlmRouterConfig } from "../config/env.js";
 import { RouterResult, WorkflowDecisionSchema } from "../schemas/workflow.js";
+import { sanitizeForLlm } from "../security/llm-safety.js";
 import { buildRouterSystemPrompt } from "./router-prompt.js";
 import { z } from "zod";
 
@@ -118,6 +119,7 @@ export class OpenAiRouterAdapter implements LlmRouterAdapter {
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
+    const safeUserMessage = sanitizeForLlm(userMessage);
 
     try {
       // 使用 OpenAI-compatible Chat Completions，便于未来切换兼容网关或其他模型供应商。
@@ -139,7 +141,7 @@ export class OpenAiRouterAdapter implements LlmRouterAdapter {
             },
             {
               role: "user",
-              content: userMessage
+              content: safeUserMessage.text
             }
           ]
         })
@@ -169,7 +171,11 @@ export class OpenAiRouterAdapter implements LlmRouterAdapter {
           outputTokens: completionTokens,
           totalTokens: data.usage?.total_tokens ?? promptTokens + completionTokens
         },
-        notes: [`openai-compatible router model=${this.config.model}`]
+        notes: [
+          `openai-compatible router model=${this.config.model}`,
+          ...safeUserMessage.redactedTypes.map((type) => `redacted:${type}`),
+          ...safeUserMessage.promptInjectionFindings.map((finding) => `prompt_injection:${finding.pattern}`)
+        ]
       };
     } catch (error) {
       // Router 失败不能让整次诊断崩掉，降级为 clarification，保留错误原因到 trace。

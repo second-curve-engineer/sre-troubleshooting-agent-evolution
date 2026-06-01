@@ -34,9 +34,10 @@ npm run eval
 - step 级工具白名单。
 - tool risk level + approval policy：低/中风险工具自动审批并进入 trace，高风险工具预留人工审批。
 - tool timeout / failure handling：工具超时或失败会进入 trace 和 eval，不让 run 直接崩溃。
+- redaction / prompt-injection boundary：进入 LLM/报告前脱敏，并把日志里的 prompt injection 标记为数据。
 - trace JSON 持久化。
 - 504 场景下的初版 self-correction policy。
-- eval runner：检查 route、tool order、tool status、evidence keywords、report fields、router token budget。
+- eval runner：检查 route、tool order、tool status、redaction、prompt injection、evidence keywords、report fields、router token budget。
 
 V3 带来的关键认知是：
 

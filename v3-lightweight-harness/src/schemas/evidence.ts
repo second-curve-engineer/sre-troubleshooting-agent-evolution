@@ -7,8 +7,10 @@ export const EvidenceItemSchema = z.object({
   kind: z.enum(["app", "log", "trace", "slow_query", "code", "system"]),
   summary: z.string(),
   rawRef: z.string().optional(),
+  safetyFlags: z.array(z.string()).default([]),
   confidence: z.enum(["high", "medium", "low"]).default("medium"),
   usedInFinalReport: z.boolean().default(true)
 });
 
+export type EvidenceInput = z.input<typeof EvidenceItemSchema>;
 export type EvidenceItem = z.infer<typeof EvidenceItemSchema>;

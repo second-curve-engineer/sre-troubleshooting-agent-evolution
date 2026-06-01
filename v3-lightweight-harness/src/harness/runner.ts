@@ -4,6 +4,7 @@ import { performance } from "node:perf_hooks";
 import { RunState } from "../schemas/run.js";
 import { ToolResult, ToolTrace } from "../schemas/tool.js";
 import { RunTrace } from "../schemas/trace.js";
+import { redactUnknown } from "../security/redaction.js";
 import { ToolName, ToolRegistry } from "../tools/tool-registry.js";
 import { generateMockDiagnosis } from "../llm/mock-llm.js";
 import { getWorkflow } from "../workflows/registry.js";
@@ -114,8 +115,8 @@ export class HarnessRunner {
           toolName,
           riskLevel: metadata.riskLevel,
           approvalStatus: approval.status,
-          toolInput: input,
-          outputSummary: result.outputSummary ?? {},
+          toolInput: redactUnknown(input) as Record<string, unknown>,
+          outputSummary: redactUnknown(result.outputSummary ?? {}) as Record<string, unknown>,
           status: result.status,
           timeoutMs: this.toolExecution.timeoutMs,
           timedOut: false,
@@ -153,8 +154,8 @@ export class HarnessRunner {
       approvalStatus: [...state.approvals]
         .reverse()
         .find((approval) => approval.stepId === stepId && approval.toolName === toolName)?.status,
-      toolInput: input,
-      outputSummary: result.outputSummary ?? {},
+      toolInput: redactUnknown(input) as Record<string, unknown>,
+      outputSummary: redactUnknown(result.outputSummary ?? {}) as Record<string, unknown>,
       status: result.status,
       timeoutMs: this.toolExecution.timeoutMs,
       timedOut,

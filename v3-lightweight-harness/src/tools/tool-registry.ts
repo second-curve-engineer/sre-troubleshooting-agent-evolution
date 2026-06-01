@@ -34,7 +34,9 @@ const handlers: Record<ToolName, ToolHandler> = {
       fromTime: input.fromTime ? String(input.fromTime) : undefined,
       toTime: input.toTime ? String(input.toTime) : undefined,
       env: String(input.env ?? "prod"),
-      limit: input.limit ? Number(input.limit) : undefined
+      limit: input.limit ? Number(input.limit) : undefined,
+      __simulateSensitiveLog: Boolean(input.__simulateSensitiveLog),
+      __simulatePromptInjectionLog: Boolean(input.__simulatePromptInjectionLog)
     }),
   query_mysql_slow_log: (input) =>
     queryMysqlSlowLog({

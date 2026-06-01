@@ -6,6 +6,8 @@ export async function runPerformanceDiagnosis(context: WorkflowContext): Promise
   const appId = context.state.app?.appId ?? "order-service";
   const simulateLogTimeout = context.state.userMessage.includes("模拟日志平台超时");
   const simulateSlowQueryFailure = context.state.userMessage.includes("模拟慢查询平台失败");
+  const simulateSensitiveLog = context.state.userMessage.includes("模拟敏感日志");
+  const simulatePromptInjectionLog = context.state.userMessage.includes("模拟日志注入");
   let query = "SELECT * WHERE http.status_code = '504'";
   let retryCount = 0;
   let logResult: ToolResult;
@@ -22,7 +24,9 @@ export async function runPerformanceDiagnosis(context: WorkflowContext): Promise
         toTime: "2026-05-28 10:35:00",
         env: "prod",
         limit: 5,
-        ...(simulateLogTimeout && retryCount === 0 ? { __simulateDelayMs: 100 } : {})
+        ...(simulateLogTimeout && retryCount === 0 ? { __simulateDelayMs: 100 } : {}),
+        ...(simulateSensitiveLog ? { __simulateSensitiveLog: true } : {}),
+        ...(simulatePromptInjectionLog ? { __simulatePromptInjectionLog: true } : {})
       },
       ["query_logs_by_condition"]
     );
@@ -30,7 +34,7 @@ export async function runPerformanceDiagnosis(context: WorkflowContext): Promise
     context.evidence.add({
       source: "query_logs_by_condition",
       kind: "log",
-      summary: `${appId} 性能日志查询第 ${retryCount + 1} 次: ${logResult.summary}`,
+      summary: `${appId} 性能日志查询第 ${retryCount + 1} 次: ${logResult.summary}${(logResult.outputSummary ?? {}).securityProbe ? `; ${(logResult.outputSummary ?? {}).securityProbe}` : ""}`,
       confidence: logResult.status === "ok" ? "high" : "medium",
       usedInFinalReport: true
     });
