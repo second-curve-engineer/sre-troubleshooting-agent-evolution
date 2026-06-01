@@ -1102,8 +1102,8 @@ java.lang.NullPointerException
             # 服务选择 - 简化为单选按钮
             service_selection = st.radio(
                 "目标服务:",
-                options=["ADP", "Pandora"],
-                index=0,  # 默认ADP
+                options=["Order", "Inventory"],
+                index=0,  # 默认Order
                 horizontal=True
             )
             
@@ -1189,9 +1189,9 @@ java.lang.NullPointerException
                 
                 try:
                     # 获取选择的服务 - 根据单选按钮结果映射到实际服务ID
-                    if service_selection == "ADP":
+                    if service_selection == "Gateway":
                         selected_services = ["demo.ads.ad-gateway"]
-                    else:  # Pandora
+                    else:
                         selected_services = ["demo.order.order-service"]
                     
                     with st.spinner("AI正在基于错误码执行诊断流程..."):

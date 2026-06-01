@@ -1,3 +1,4 @@
+import { ToolRiskLevel } from "../schemas/approval.js";
 import { ToolResult } from "../schemas/tool.js";
 import { resolveApp } from "./app-tools.js";
 import { askCodebase } from "./code-tools.js";
@@ -12,6 +13,11 @@ export type ToolName =
   | "ask_codebase";
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<ToolResult>;
+export type ToolMetadata = {
+  name: ToolName;
+  riskLevel: ToolRiskLevel;
+  description: string;
+};
 
 const handlers: Record<ToolName, ToolHandler> = {
   resolve_app: (input) => resolveApp({ query: String(input.query ?? "") }),
@@ -44,7 +50,39 @@ const handlers: Record<ToolName, ToolHandler> = {
     })
 };
 
+const metadata: Record<ToolName, ToolMetadata> = {
+  resolve_app: {
+    name: "resolve_app",
+    riskLevel: "low",
+    description: "Resolve service aliases to app metadata."
+  },
+  query_logs_by_trace_id: {
+    name: "query_logs_by_trace_id",
+    riskLevel: "low",
+    description: "Read-only trace log lookup."
+  },
+  query_logs_by_condition: {
+    name: "query_logs_by_condition",
+    riskLevel: "low",
+    description: "Read-only condition log lookup."
+  },
+  query_mysql_slow_log: {
+    name: "query_mysql_slow_log",
+    riskLevel: "medium",
+    description: "Read-only slow query log lookup with potentially sensitive SQL fingerprints."
+  },
+  ask_codebase: {
+    name: "ask_codebase",
+    riskLevel: "low",
+    description: "Read-only codebase question answering."
+  }
+};
+
 export class ToolRegistry {
+  getMetadata(toolName: ToolName): ToolMetadata {
+    return metadata[toolName];
+  }
+
   async invoke(args: {
     toolName: ToolName;
     input: Record<string, unknown>;

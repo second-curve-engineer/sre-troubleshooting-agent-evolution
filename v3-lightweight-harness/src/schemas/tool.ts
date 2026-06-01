@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ToolRiskLevelSchema } from "./approval.js";
 
 export const ToolStatusSchema = z.enum(["ok", "empty", "too_many_results", "error"]);
 
@@ -15,6 +16,8 @@ export const ToolTraceSchema = z.object({
   runId: z.string(),
   stepId: z.string(),
   toolName: z.string(),
+  riskLevel: ToolRiskLevelSchema.optional(),
+  approvalStatus: z.string().optional(),
   toolInput: z.record(z.unknown()),
   outputSummary: z.record(z.unknown()),
   status: z.string(),

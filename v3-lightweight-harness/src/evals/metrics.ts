@@ -97,6 +97,22 @@ export function evaluateCase(args: {
     });
   }
 
+  if (args.testCase.expectedApprovals) {
+    for (const expected of args.testCase.expectedApprovals) {
+      const matched = args.state.approvals.some(
+        (approval) =>
+          approval.toolName === expected.toolName &&
+          approval.riskLevel === expected.riskLevel &&
+          approval.status === expected.status
+      );
+      checks.push({
+        name: `approval_${expected.toolName}`,
+        passed: matched,
+        message: `expected ${expected.toolName} risk=${expected.riskLevel} status=${expected.status}`
+      });
+    }
+  }
+
   return {
     id: args.testCase.id,
     passed: checks.every((check) => check.passed),

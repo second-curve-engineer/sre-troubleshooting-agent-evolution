@@ -10,6 +10,11 @@ export type EvalCase = {
   expectedConfidence?: "high" | "medium" | "low";
   expectedUsedLlm?: boolean;
   maxRouterTokens?: number;
+  expectedApprovals?: Array<{
+    toolName: ToolName;
+    riskLevel: "low" | "medium" | "high" | "critical";
+    status: "pending" | "approved" | "rejected" | "auto_approved";
+  }>;
 };
 
 export const evalCases: EvalCase[] = [
@@ -21,7 +26,12 @@ export const evalCases: EvalCase[] = [
     expectedEvidenceKeywords: ["NullPointerException", "inventory-service", "InventoryService.java"],
     expectedConfidence: "high",
     expectedUsedLlm: false,
-    maxRouterTokens: 0
+    maxRouterTokens: 0,
+    expectedApprovals: [
+      { toolName: "resolve_app", riskLevel: "low", status: "auto_approved" },
+      { toolName: "query_logs_by_trace_id", riskLevel: "low", status: "auto_approved" },
+      { toolName: "ask_codebase", riskLevel: "low", status: "auto_approved" }
+    ]
   },
   {
     id: "condition_500_no_trace",
@@ -41,7 +51,10 @@ export const evalCases: EvalCase[] = [
     expectedEvidenceKeywords: ["结果过宽", "Query_time", "order_item"],
     expectedConfidence: "medium",
     expectedUsedLlm: false,
-    maxRouterTokens: 0
+    maxRouterTokens: 0,
+    expectedApprovals: [
+      { toolName: "query_mysql_slow_log", riskLevel: "medium", status: "auto_approved" }
+    ]
   },
   {
     id: "insufficient_context",
