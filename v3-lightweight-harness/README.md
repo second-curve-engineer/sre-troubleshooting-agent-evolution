@@ -32,7 +32,8 @@ npm run eval
 - hybrid router：高置信 heuristic 不调用 LLM，低置信模糊输入走 LLM router adapter。
 - router adapter：默认使用 mock router；设置 `LLM_ROUTER_MODE=openai` 后，低置信路由可调用 OpenAI-compatible API。
 - step 级工具白名单。
-- tool risk level + approval policy：低/中风险工具自动审批并进入 trace，高风险工具预留人工审批。
+- tool risk level + approval policy：低/中风险工具自动审批并进入 trace，高风险工具进入 HITL pending-resume。
+- HITL pending-resume：高风险工具会暂停 run，审批通过后 resume，拒绝后不执行。
 - tool timeout / failure handling：工具超时或失败会进入 trace 和 eval，不让 run 直接崩溃。
 - redaction / prompt-injection boundary：进入 LLM/报告前脱敏，并把日志里的 prompt injection 标记为数据。
 - trace JSON 持久化。

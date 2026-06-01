@@ -7,17 +7,23 @@ import { EvidenceItemSchema } from "./evidence.js";
 import { ToolTraceSchema } from "./tool.js";
 import { RouterResultSchema, WorkflowDecisionSchema } from "./workflow.js";
 
+export const RunStatusSchema = z.enum(["running", "waiting_approval", "completed", "failed"]);
+
 export const RunStateSchema = z.object({
   runId: z.string(),
   sessionId: z.string(),
+  status: RunStatusSchema.default("running"),
   userMessage: z.string(),
   decision: WorkflowDecisionSchema.optional(),
   router: RouterResultSchema.optional(),
   app: AppInfoSchema.optional(),
   approvals: z.array(HumanApprovalRequestSchema).default([]),
+  pendingApprovalId: z.string().optional(),
+  resumeFromStepId: z.string().optional(),
   evidence: z.array(EvidenceItemSchema).default([]),
   toolTraces: z.array(ToolTraceSchema).default([]),
   finalReport: DiagnosisReportSchema.optional()
 });
 
+export type RunStatus = z.infer<typeof RunStatusSchema>;
 export type RunState = z.infer<typeof RunStateSchema>;

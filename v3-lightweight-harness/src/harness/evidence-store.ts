@@ -7,6 +7,15 @@ export class EvidenceStore {
   private nextId = 1;
   private readonly items: EvidenceItem[] = [];
 
+  constructor(initialItems: EvidenceItem[] = []) {
+    this.items = [...initialItems];
+    this.nextId =
+      initialItems.reduce((max, item) => {
+        const value = Number(item.id.replace(/^ev-/, ""));
+        return Number.isFinite(value) ? Math.max(max, value) : max;
+      }, 0) + 1;
+  }
+
   add(item: Omit<EvidenceInput, "id">): EvidenceItem {
     const sanitized = sanitizeForLlm(item.summary);
     const summary = safetySummary(sanitized);

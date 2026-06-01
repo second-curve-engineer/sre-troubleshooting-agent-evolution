@@ -9,7 +9,8 @@
     "dev": "npm run diagnose --",
     "eval": "npm run build --silent && node dist/cli.js eval",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "hitl-demo": "npm run build --silent && node dist/cli.js hitl-demo"
   },
   "dependencies": {
     "zod": "^3.25.0"

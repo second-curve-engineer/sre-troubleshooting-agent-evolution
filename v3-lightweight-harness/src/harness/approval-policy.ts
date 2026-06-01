@@ -45,7 +45,7 @@ export class ApprovalPolicy {
       return { ...request, status: "auto_approved", decidedAt: now };
     }
 
-    if (args.riskLevel === "medium" && this.mode === "auto") {
+    if (args.riskLevel === "medium") {
       return { ...request, status: "auto_approved", decidedAt: now };
     }
 

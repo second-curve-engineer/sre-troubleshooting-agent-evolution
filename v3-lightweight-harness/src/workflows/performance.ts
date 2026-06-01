@@ -8,6 +8,7 @@ export async function runPerformanceDiagnosis(context: WorkflowContext): Promise
   const simulateSlowQueryFailure = context.state.userMessage.includes("模拟慢查询平台失败");
   const simulateSensitiveLog = context.state.userMessage.includes("模拟敏感日志");
   const simulatePromptInjectionLog = context.state.userMessage.includes("模拟日志注入");
+  const simulateHighRiskRestart = context.state.userMessage.includes("模拟高风险重启");
   let query = "SELECT * WHERE http.status_code = '504'";
   let retryCount = 0;
   let logResult: ToolResult;
@@ -76,6 +77,27 @@ export async function runPerformanceDiagnosis(context: WorkflowContext): Promise
     confidence: slowResult.status === "ok" ? "high" : "medium",
     usedInFinalReport: true
   });
+
+  if (!simulateHighRiskRestart) return;
+
+  const restartResult = await context.invokeTool(
+    context.state,
+    "step-restart-service",
+    "restart_service",
+    {
+      appId,
+      reason: "模拟高风险重启，用于验证 HITL pending-resume 控制流"
+    },
+    ["restart_service"]
+  );
+
+  context.evidence.add({
+    source: "restart_service",
+    kind: "system",
+    summary: restartResult.summary,
+    confidence: restartResult.status === "ok" ? "medium" : "low",
+    usedInFinalReport: true
+  });
 }
 
 export const performanceWorkflow: WorkflowDefinition = {
@@ -96,6 +118,11 @@ export const performanceWorkflow: WorkflowDefinition = {
       stepId: "step-mysql-slow-log",
       description: "当日志出现 SQL/timeout 线索时查询慢 SQL。",
       allowedTools: ["query_mysql_slow_log"]
+    },
+    {
+      stepId: "step-restart-service",
+      description: "高风险生产动作，必须经过 HITL 审批后才能执行。",
+      allowedTools: ["restart_service"]
     }
   ],
   execute: runPerformanceDiagnosis

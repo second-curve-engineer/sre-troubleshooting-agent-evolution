@@ -11,7 +11,8 @@ export type ToolName =
   | "query_logs_by_trace_id"
   | "query_logs_by_condition"
   | "query_mysql_slow_log"
-  | "ask_codebase";
+  | "ask_codebase"
+  | "restart_service";
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<ToolResult>;
 export type ToolMetadata = {
@@ -50,7 +51,16 @@ const handlers: Record<ToolName, ToolHandler> = {
     askCodebase({
       codebasePath: String(input.codebasePath ?? ""),
       question: String(input.question ?? "")
-    })
+    }),
+  restart_service: async (input) => ({
+    status: "ok",
+    summary: `模拟高风险动作：已生成 ${String(input.appId ?? "unknown")} 重启执行记录`,
+    outputSummary: {
+      appId: String(input.appId ?? "unknown"),
+      action: "restart_service",
+      dryRun: true
+    }
+  })
 };
 
 const metadata: Record<ToolName, ToolMetadata> = {
@@ -78,6 +88,11 @@ const metadata: Record<ToolName, ToolMetadata> = {
     name: "ask_codebase",
     riskLevel: "low",
     description: "Read-only codebase question answering."
+  },
+  restart_service: {
+    name: "restart_service",
+    riskLevel: "high",
+    description: "High-risk production action used to demonstrate HITL pending/resume."
   }
 };
 

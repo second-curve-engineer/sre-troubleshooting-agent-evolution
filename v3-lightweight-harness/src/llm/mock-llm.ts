@@ -15,7 +15,8 @@ export function generateMockDiagnosis(args: {
     evidenceText.includes("执行超过") ||
     evidenceText.includes("模拟失败") ||
     evidenceText.includes("工具失败") ||
-    evidenceText.includes("timeout 处理");
+    evidenceText.includes("timeout 处理") ||
+    evidenceText.includes("人工审批拒绝");
 
   if (isUnknown) {
     return {
