@@ -1,12 +1,13 @@
 // Harness 控制中心：串起 router、workflow、tool 调用、evidence、report 和 trace 持久化。
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
-import { AppInfo } from "../schemas/app.js";
 import { RunState } from "../schemas/run.js";
 import { ToolResult, ToolTrace } from "../schemas/tool.js";
 import { RunTrace } from "../schemas/trace.js";
 import { ToolName, ToolRegistry } from "../tools/tool-registry.js";
 import { generateMockDiagnosis } from "../llm/mock-llm.js";
+import { getWorkflow } from "../workflows/registry.js";
+import { resolveAppForWorkflow } from "../workflows/shared.js";
 import { ApprovalPolicy } from "./approval-policy.js";
 import { EvidenceStore } from "./evidence-store.js";
 import { SelfCorrectionPolicy } from "./policies.js";
@@ -42,154 +43,27 @@ export class HarnessRunner {
       usedInFinalReport: false
     });
 
-    if (state.decision.route === "clarification") {
-      evidence.add({
-        source: "router",
-        kind: "system",
-        summary: state.decision.reason,
-        confidence: state.router.confidence >= 0.75 ? "high" : "medium",
-        usedInFinalReport: true
-      });
-      state.evidence = evidence.list();
-      state.finalReport = generateMockDiagnosis({ decision: state.decision, evidence: state.evidence });
-      return this.persist(state);
-    }
+    const workflow = getWorkflow(state.decision.route);
+    const workflowContext = {
+      state,
+      evidence,
+      invokeTool: this.invokeTool.bind(this),
+      selfCorrectionPolicy: this.policy
+    };
 
-    const appResult = await this.invokeTool(state, "step-resolve-app", "resolve_app", {
-      query: state.decision.appHint ?? userMessage
-    }, ["resolve_app"]);
-    if (appResult.status === "ok") {
-      state.app = appResult.data as AppInfo;
-      evidence.add({
-        source: "resolve_app",
-        kind: "app",
-        summary: `应用解析为 ${state.app.appId}，代码库 ${state.app.codebasePath}`,
-        confidence: "high",
-        usedInFinalReport: true
+    if (state.decision.route !== "clarification") {
+      await resolveAppForWorkflow({
+        state,
+        evidence,
+        invokeTool: workflowContext.invokeTool,
+        userMessage
       });
     }
 
-    if (state.decision.route === "trace-diagnosis") {
-      await this.runTraceDiagnosis(state, evidence);
-    } else if (state.decision.route === "condition-log") {
-      await this.runConditionLogDiagnosis(state, evidence);
-    } else if (state.decision.route === "performance") {
-      await this.runPerformanceDiagnosis(state, evidence);
-    }
-
+    await workflow.execute(workflowContext);
     state.evidence = evidence.list();
     state.finalReport = generateMockDiagnosis({ decision: state.decision, evidence: state.evidence });
     return this.persist(state);
-  }
-
-  private async runTraceDiagnosis(state: RunState, evidence: EvidenceStore): Promise<void> {
-    const traceId = state.decision?.traceId ?? "demo-trace-001";
-    const traceResult = await this.invokeTool(state, "step-trace", "query_logs_by_trace_id", {
-      traceId,
-      env: "prod"
-    }, ["query_logs_by_trace_id"]);
-    evidence.add({
-      source: "query_logs_by_trace_id",
-      kind: "trace",
-      summary: `trace ${traceId}: ${traceResult.summary}; 首次异常=${String((traceResult.outputSummary ?? {}).firstException ?? "unknown")}`,
-      confidence: traceResult.status === "ok" ? "high" : "low",
-      rawRef: traceId,
-      usedInFinalReport: true
-    });
-    await this.askCodeIfPossible(state, evidence);
-  }
-
-  private async runConditionLogDiagnosis(state: RunState, evidence: EvidenceStore): Promise<void> {
-    const appId = state.app?.appId ?? "order-service";
-    const logResult = await this.invokeTool(state, "step-condition-log", "query_logs_by_condition", {
-      appId,
-      query: "SELECT * WHERE log.level = 'ERROR' and http.status_code = '500'",
-      fromTime: "2026-05-28 10:30:00",
-      toTime: "2026-05-28 10:35:00",
-      env: "prod"
-    }, ["query_logs_by_condition"]);
-    evidence.add({
-      source: "query_logs_by_condition",
-      kind: "log",
-      summary: `${appId} 条件日志查询: ${logResult.summary}`,
-      confidence: logResult.status === "ok" ? "high" : "medium",
-      usedInFinalReport: true
-    });
-    const traceIds = ((logResult.outputSummary ?? {}).traceIds as string[] | undefined) ?? [];
-    if (traceIds.length > 0) {
-      state.decision = { ...state.decision!, traceId: traceIds[0] };
-      await this.runTraceDiagnosis(state, evidence);
-    }
-  }
-
-  private async runPerformanceDiagnosis(state: RunState, evidence: EvidenceStore): Promise<void> {
-    const appId = state.app?.appId ?? "order-service";
-    let query = "SELECT * WHERE http.status_code = '504'";
-    let retryCount = 0;
-    let logResult: ToolResult;
-
-    do {
-      logResult = await this.invokeTool(state, `step-performance-log-${retryCount + 1}`, "query_logs_by_condition", {
-        appId,
-        query,
-        fromTime: "2026-05-28 10:30:00",
-        toTime: "2026-05-28 10:35:00",
-        env: "prod",
-        limit: 5
-      }, ["query_logs_by_condition"]);
-
-      evidence.add({
-        source: "query_logs_by_condition",
-        kind: "log",
-        summary: `${appId} 性能日志查询第 ${retryCount + 1} 次: ${logResult.summary}`,
-        confidence: logResult.status === "ok" ? "high" : "medium",
-        usedInFinalReport: true
-      });
-
-      // 这里体现 self-correction：工具返回“结果过宽/被截断”时，由 policy 收窄查询条件再试一次。
-      if (this.policy.shouldRetry(logResult, retryCount)) {
-        query = this.policy.nextConditionQuery(query, logResult);
-        retryCount += 1;
-      } else {
-        break;
-      }
-    } while (retryCount <= this.policy.maxRetries);
-
-    const shouldQuerySlowLog =
-      (logResult.detectedKeywords ?? []).some((keyword) => ["sql", "timeout", "slow query"].includes(keyword.toLowerCase())) ||
-      JSON.stringify(logResult.outputSummary).toLowerCase().includes("sql");
-
-    if (shouldQuerySlowLog) {
-      const slowResult = await this.invokeTool(state, "step-mysql-slow-log", "query_mysql_slow_log", {
-        dbNames: ["order_db"],
-        query: "Query_time > 3",
-        fromTime: "2026-05-28 10:30:00",
-        toTime: "2026-05-28 10:35:00",
-        env: "prod"
-      }, ["query_mysql_slow_log"]);
-      evidence.add({
-        source: "query_mysql_slow_log",
-        kind: "slow_query",
-        summary: `${slowResult.summary}; SQL=${String((slowResult.outputSummary ?? {}).sql ?? "unknown")}`,
-        confidence: slowResult.status === "ok" ? "high" : "medium",
-        usedInFinalReport: true
-      });
-    }
-  }
-
-  private async askCodeIfPossible(state: RunState, evidence: EvidenceStore): Promise<void> {
-    if (!state.app?.codebasePath) return;
-    const codeResult = await this.invokeTool(state, "step-code", "ask_codebase", {
-      codebasePath: "inventory-service",
-      question: "根据 trace 异常栈定位代码根因"
-    }, ["ask_codebase"]);
-    evidence.add({
-      source: "ask_codebase",
-      kind: "code",
-      summary: `${codeResult.summary}; 文件=${String((codeResult.outputSummary ?? {}).file ?? "unknown")}:${String((codeResult.outputSummary ?? {}).line ?? "")}`,
-      confidence: codeResult.status === "ok" ? "high" : "medium",
-      usedInFinalReport: true
-    });
   }
 
   private async invokeTool(

@@ -28,6 +28,7 @@ npm run eval
 - CLI 诊断入口。
 - mock tools：应用解析、trace 日志、条件日志、慢查询日志、代码问答。
 - workflow router：trace-diagnosis、condition-log、performance、clarification。
+- workflow definitions：每条排障路径独立声明 step、allowedTools 和执行逻辑。
 - hybrid router：高置信 heuristic 不调用 LLM，低置信模糊输入走 LLM router adapter。
 - router adapter：默认使用 mock router；设置 `LLM_ROUTER_MODE=openai` 后，低置信路由可调用 OpenAI-compatible API。
 - step 级工具白名单。
