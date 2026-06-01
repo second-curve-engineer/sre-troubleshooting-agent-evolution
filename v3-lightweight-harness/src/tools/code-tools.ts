@@ -1,3 +1,4 @@
+// 代码问答工具：模拟根据异常栈定位代码文件、行号和可能根因。
 import { ToolResult } from "../schemas/tool.js";
 import { readMockJson } from "./data.js";
 

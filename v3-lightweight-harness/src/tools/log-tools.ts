@@ -1,3 +1,4 @@
+// 日志查询工具：模拟按 trace_id 或条件查询日志平台的只读能力。
 import { ToolResult } from "../schemas/tool.js";
 import { readMockJson } from "./data.js";
 

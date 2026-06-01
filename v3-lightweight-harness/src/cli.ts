@@ -1,3 +1,4 @@
+// CLI 入口：负责解析 diagnose/eval 命令，并把 Runner/Eval 的结构化结果渲染到终端。
 import { HarnessRunner } from "./harness/runner.js";
 import { renderEvalResults, runEvals } from "./evals/runner.js";
 

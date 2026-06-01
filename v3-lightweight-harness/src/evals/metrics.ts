@@ -1,3 +1,4 @@
+// Eval 指标：基于运行后的 state/trace 检查路由、工具顺序、证据和 token 成本。
 import { RunState } from "../schemas/run.js";
 import { ToolName } from "../tools/tool-registry.js";
 import { EvalCase } from "./cases.js";

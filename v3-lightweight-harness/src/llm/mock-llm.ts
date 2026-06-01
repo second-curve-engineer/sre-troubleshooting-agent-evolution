@@ -1,3 +1,4 @@
+// Mock 诊断报告生成器：用结构化假报告先跑通 harness/report/eval 链路。
 import { DiagnosisReport } from "../schemas/diagnosis.js";
 import { EvidenceItem } from "../schemas/evidence.js";
 import { WorkflowDecision } from "../schemas/workflow.js";

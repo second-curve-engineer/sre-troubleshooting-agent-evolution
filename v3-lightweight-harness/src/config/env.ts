@@ -1,3 +1,4 @@
+// 读取 LLM router 相关环境变量，决定低置信路由使用 mock 还是真实 OpenAI-compatible API。
 export type RouterMode = "mock" | "openai";
 
 export type LlmRouterConfig = {

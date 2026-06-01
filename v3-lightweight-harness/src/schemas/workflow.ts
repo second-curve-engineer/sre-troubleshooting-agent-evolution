@@ -1,3 +1,4 @@
+// Workflow schema：定义 router 可输出的问题类型、workflow route 和置信度信息。
 import { z } from "zod";
 
 export const ProblemTypeSchema = z.enum(["interface_error", "performance", "unknown"]);

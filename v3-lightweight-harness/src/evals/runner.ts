@@ -1,3 +1,4 @@
+// Eval Runner：批量执行 case，并输出适合 CI/人工阅读的回归结果。
 import { HarnessRunner } from "../harness/runner.js";
 import { evalCases } from "./cases.js";
 import { EvalCaseResult, evaluateCase } from "./metrics.js";

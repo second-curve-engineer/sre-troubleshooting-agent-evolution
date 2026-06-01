@@ -1,3 +1,4 @@
+// Diagnosis schema：定义最终诊断报告的结构化输出格式。
 import { z } from "zod";
 
 export const DiagnosisReportSchema = z.object({

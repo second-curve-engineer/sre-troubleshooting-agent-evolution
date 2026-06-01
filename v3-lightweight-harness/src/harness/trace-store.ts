@@ -1,3 +1,4 @@
+// Trace Store：把一次 run 的状态固化为 JSON，供复盘、eval 和后续 replay 使用。
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { TRACE_DIR } from "../config/paths.js";

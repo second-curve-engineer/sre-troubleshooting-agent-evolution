@@ -1,3 +1,4 @@
+// Router 单测：验证高置信规则不调用 LLM、低置信输入会进入 LLM/fallback。
 import { describe, expect, it } from "vitest";
 import { routeWorkflow } from "./router.js";
 

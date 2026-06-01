@@ -1,3 +1,4 @@
+// Tool schema：定义工具执行结果和 tool trace，支撑可观测性与 eval。
 import { z } from "zod";
 import { ToolRiskLevelSchema } from "./approval.js";
 

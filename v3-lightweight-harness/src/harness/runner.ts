@@ -1,3 +1,4 @@
+// Harness 控制中心：串起 router、workflow、tool 调用、evidence、report 和 trace 持久化。
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { AppInfo } from "../schemas/app.js";

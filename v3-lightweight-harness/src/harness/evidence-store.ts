@@ -1,3 +1,4 @@
+// Evidence Store：收集本轮诊断中可进入报告和 eval 的证据摘要。
 import { EvidenceItem } from "../schemas/evidence.js";
 
 export class EvidenceStore {

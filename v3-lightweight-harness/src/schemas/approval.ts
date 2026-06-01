@@ -1,3 +1,4 @@
+// Approval schema：定义工具风险等级和人工审批请求的数据结构。
 import { z } from "zod";
 
 export const ToolRiskLevelSchema = z.enum(["low", "medium", "high", "critical"]);

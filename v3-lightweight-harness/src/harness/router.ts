@@ -1,3 +1,4 @@
+// Hybrid Router：先用确定性规则判断 workflow，低置信时再调用 LLM router adapter。
 import { RouterResult, WorkflowDecision } from "../schemas/workflow.js";
 import { createLlmRouterAdapter, LlmRouterAdapter } from "../llm/router-adapter.js";
 

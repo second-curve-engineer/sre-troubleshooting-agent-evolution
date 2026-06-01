@@ -1,3 +1,4 @@
+// LLM Router Adapter：为低置信路由提供 mock/真实 API 两种可替换实现。
 import { loadLlmRouterConfig, LlmRouterConfig } from "../config/env.js";
 import { RouterResult, WorkflowDecisionSchema } from "../schemas/workflow.js";
 import { z } from "zod";

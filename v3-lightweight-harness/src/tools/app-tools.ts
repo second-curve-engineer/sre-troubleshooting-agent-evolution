@@ -1,3 +1,4 @@
+// 应用解析工具：把用户输入中的服务别名映射为标准 app/codebase 元数据。
 import { AppInfo, AppInfoSchema } from "../schemas/app.js";
 import { ToolResult } from "../schemas/tool.js";
 import { readMockJson } from "./data.js";

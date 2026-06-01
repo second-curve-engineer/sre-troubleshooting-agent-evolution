@@ -1,3 +1,4 @@
+// 集中管理运行时路径，避免 trace/mock-data 等目录散落在业务代码里。
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 

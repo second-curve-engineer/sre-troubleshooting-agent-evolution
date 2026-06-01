@@ -1,3 +1,4 @@
+// Tool Registry：统一注册工具、风险等级和 step 级白名单校验入口。
 import { ToolRiskLevel } from "../schemas/approval.js";
 import { ToolResult } from "../schemas/tool.js";
 import { resolveApp } from "./app-tools.js";

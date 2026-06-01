@@ -1,3 +1,4 @@
+// Evidence schema：定义诊断过程中沉淀的证据项，连接 tool output 和 final report。
 import { z } from "zod";
 
 export const EvidenceItemSchema = z.object({

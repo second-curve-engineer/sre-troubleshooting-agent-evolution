@@ -1,3 +1,4 @@
+// 工具审批策略：根据 risk level 决定工具是否自动执行，作为 HITL 的后端雏形。
 import { randomUUID } from "node:crypto";
 import { HumanApprovalRequest, ToolRiskLevel } from "../schemas/approval.js";
 import { ToolName } from "../tools/tool-registry.js";

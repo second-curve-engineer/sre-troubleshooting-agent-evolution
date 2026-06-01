@@ -1,3 +1,4 @@
+// 慢查询工具：模拟从 MySQL 慢日志中提取 SQL 性能证据。
 import { ToolResult } from "../schemas/tool.js";
 import { readMockJson } from "./data.js";
 

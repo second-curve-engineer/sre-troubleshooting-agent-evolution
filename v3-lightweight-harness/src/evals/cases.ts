@@ -1,3 +1,4 @@
+// Eval Case 集合：定义典型故障输入和期望的 route/tool/evidence 行为。
 import { ToolName } from "../tools/tool-registry.js";
 import { WorkflowRoute } from "../schemas/workflow.js";
 

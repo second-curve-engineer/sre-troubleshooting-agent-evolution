@@ -1,3 +1,4 @@
+// Workflow 策略集合：当前主要承载 504/timeout 场景的自我纠偏规则。
 import { ToolResult } from "../schemas/tool.js";
 
 export class SelfCorrectionPolicy {
