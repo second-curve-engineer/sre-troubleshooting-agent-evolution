@@ -8,7 +8,7 @@ import { ToolResult, ToolTrace } from "../schemas/tool.js";
 import { RunTrace } from "../schemas/trace.js";
 import { redactUnknown } from "../security/redaction.js";
 import { ToolName, ToolRegistry } from "../tools/tool-registry.js";
-import { generateMockDiagnosis } from "../llm/mock-llm.js";
+import { createDiagnosisGenerator, DiagnosisGenerator } from "../llm/report-adapter.js";
 import { getWorkflow } from "../workflows/registry.js";
 import { resolveAppForWorkflow } from "../workflows/shared.js";
 import { loadToolExecutionConfig, ToolExecutionConfig } from "../config/env.js";
@@ -24,13 +24,19 @@ export class HarnessRunner {
   private readonly policy = new SelfCorrectionPolicy();
   private readonly approvalPolicy: ApprovalPolicy;
   private readonly toolExecution: ToolExecutionConfig;
+  private readonly diagnosisGenerator: DiagnosisGenerator;
 
-  constructor(options: { approvalMode?: ApprovalMode; toolExecution?: Partial<ToolExecutionConfig> } = {}) {
+  constructor(options: {
+    approvalMode?: ApprovalMode;
+    toolExecution?: Partial<ToolExecutionConfig>;
+    diagnosisGenerator?: DiagnosisGenerator;
+  } = {}) {
     this.approvalPolicy = new ApprovalPolicy(options.approvalMode ?? "auto");
     this.toolExecution = {
       ...loadToolExecutionConfig(),
       ...options.toolExecution
     };
+    this.diagnosisGenerator = options.diagnosisGenerator ?? createDiagnosisGenerator();
   }
 
   async run(userMessage: string, sessionId = "cli"): Promise<{ state: RunState; tracePath: string }> {
@@ -91,7 +97,7 @@ export class HarnessRunner {
       });
     }
     state.evidence = evidence.list();
-    state.finalReport = generateMockDiagnosis({ decision: state.decision, evidence: state.evidence });
+    await this.generateDiagnosis(state);
     return this.persist(state);
   }
 
@@ -120,7 +126,7 @@ export class HarnessRunner {
         usedInFinalReport: true
       });
       state.evidence = evidence.list();
-      state.finalReport = generateMockDiagnosis({ decision: state.decision!, evidence: state.evidence });
+      await this.generateDiagnosis(state);
       return this.persist(state);
     }
 
@@ -142,8 +148,21 @@ export class HarnessRunner {
     });
     state.status = "completed";
     state.evidence = evidence.list();
-    state.finalReport = generateMockDiagnosis({ decision: state.decision, evidence: state.evidence });
+    await this.generateDiagnosis(state);
     return this.persist(state);
+  }
+
+  private async generateDiagnosis(state: RunState): Promise<void> {
+    if (!state.decision) {
+      throw new Error("cannot generate diagnosis without workflow decision");
+    }
+    const result = await this.diagnosisGenerator.generate({
+      userMessage: state.userMessage,
+      decision: state.decision,
+      evidence: state.evidence
+    });
+    state.finalReport = result.report;
+    state.reportGeneration = result.trace;
   }
 
   private async invokeTool(

@@ -1,5 +1,5 @@
 // LLM Router Adapter：为低置信路由提供 mock/真实 API 两种可替换实现。
-import { loadLlmRouterConfig, LlmRouterConfig } from "../config/env.js";
+import { loadLlmConfig, LlmConfig } from "../config/env.js";
 import { RouterResult, WorkflowDecisionSchema } from "../schemas/workflow.js";
 import { sanitizeForLlm } from "../security/llm-safety.js";
 import { buildRouterSystemPrompt } from "./router-prompt.js";
@@ -100,7 +100,7 @@ function stripJsonFence(content: string): string {
 }
 
 export class OpenAiRouterAdapter implements LlmRouterAdapter {
-  constructor(private readonly config: LlmRouterConfig = loadLlmRouterConfig()) {}
+  constructor(private readonly config: LlmConfig = loadLlmConfig()) {}
 
   async route(userMessage: string): Promise<RouterResult> {
     if (!this.config.apiKey) {
@@ -202,7 +202,7 @@ export class OpenAiRouterAdapter implements LlmRouterAdapter {
 }
 
 export function createLlmRouterAdapter(): LlmRouterAdapter {
-  const config = loadLlmRouterConfig();
+  const config = loadLlmConfig();
   // 默认 mock 保证本地 eval 可复现；显式配置 openai 时才产生真实 API 调用和 token 成本。
   if (config.mode === "openai") {
     return new OpenAiRouterAdapter(config);

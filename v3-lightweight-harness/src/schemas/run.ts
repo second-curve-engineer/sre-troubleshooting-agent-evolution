@@ -9,6 +9,20 @@ import { RouterResultSchema, WorkflowDecisionSchema } from "./workflow.js";
 
 export const RunStatusSchema = z.enum(["running", "waiting_approval", "completed", "failed"]);
 
+export const ReportGenerationTraceSchema = z.object({
+  source: z.enum(["mock", "llm", "fallback"]),
+  model: z.string().optional(),
+  tokenUsage: z
+    .object({
+      inputTokens: z.number(),
+      outputTokens: z.number(),
+      totalTokens: z.number()
+    })
+    .optional(),
+  error: z.string().optional(),
+  notes: z.array(z.string()).default([])
+});
+
 export const RunStateSchema = z.object({
   runId: z.string(),
   sessionId: z.string(),
@@ -22,8 +36,10 @@ export const RunStateSchema = z.object({
   resumeFromStepId: z.string().optional(),
   evidence: z.array(EvidenceItemSchema).default([]),
   toolTraces: z.array(ToolTraceSchema).default([]),
+  reportGeneration: ReportGenerationTraceSchema.optional(),
   finalReport: DiagnosisReportSchema.optional()
 });
 
 export type RunStatus = z.infer<typeof RunStatusSchema>;
+export type ReportGenerationTrace = z.infer<typeof ReportGenerationTraceSchema>;
 export type RunState = z.infer<typeof RunStateSchema>;

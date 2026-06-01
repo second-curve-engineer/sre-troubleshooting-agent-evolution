@@ -30,7 +30,7 @@ npm run eval
 - workflow router：trace-diagnosis、condition-log、performance、clarification。
 - workflow definitions：每条排障路径独立声明 step、allowedTools 和执行逻辑。
 - hybrid router：高置信 heuristic 不调用 LLM，低置信模糊输入走 LLM router adapter。
-- router adapter：默认使用 mock router；设置 `LLM_ROUTER_MODE=openai` 后，低置信路由可调用 OpenAI-compatible API。
+- LLM adapter：router/report 共用一套 `LlmConfig`；默认使用 mock，设置 `LLM_MODE=openai` 后可调用 OpenAI-compatible API。
 - step 级工具白名单。
 - tool risk level + approval policy：低/中风险工具自动审批并进入 trace，高风险工具进入 HITL pending-resume。
 - HITL pending-resume：高风险工具会暂停 run，审批通过后 resume，拒绝后不执行。
@@ -51,20 +51,25 @@ V3 带来的关键认知是：
 - 低置信：输入信息不完整或语义比较模糊，规则层无法稳定判断，需要交给 LLM router adapter 或转为追问。
 - hybrid router：规则和 LLM 结合的路由方式。确定性强的问题先用规则处理，模糊问题再调用 LLM，从而减少 token 消耗。
 
-## 可选：启用真实 LLM Router
+## 可选：启用真实 LLM
 
-默认使用 mock router，便于本地运行和 eval。
+默认使用 mock LLM adapter，便于本地运行和 eval。
 
-如需让低置信路由调用 OpenAI-compatible API：
+如需让低置信路由和诊断报告生成调用 OpenAI-compatible API：
 
 ```bash
-export LLM_ROUTER_MODE=openai
+export LLM_MODE=openai
 export OPENAI_API_KEY=...
 export OPENAI_BASE_URL=https://api.openai.com/v1
-export LLM_ROUTER_MODEL=gpt-4.1-mini
+export LLM_MODEL=gpt-4.1-mini
+export LLM_TIMEOUT_MS=15000
 ```
 
 只有 heuristic router 低置信时才会调用 LLM，高置信的 `trace_id`、`504`、`500` 等场景仍然不消耗 router token。
+
+LLM report 输出必须通过 `DiagnosisReportSchema` 校验。API 调用失败、缺少 key 或 schema 校验失败时，会 fallback 到 mock report，并把 `reportGeneration.source=fallback` 写入 trace。
+
+兼容说明：旧的 `LLM_ROUTER_MODE` / `LLM_REPORT_MODE` / `LLM_ROUTER_MODEL` / `LLM_REPORT_MODEL` 仍会被读取，但新配置统一使用 `LLM_MODE`、`LLM_MODEL`、`LLM_TIMEOUT_MS`。
 
 ## 工具超时配置
 
