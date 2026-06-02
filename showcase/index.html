@@ -43,7 +43,7 @@
     </div>
     <div class="hero-stats">
       <div class="stat-item">
-        <div class="stat-num">9/9</div>
+        <div class="stat-num">10/10</div>
         <div class="stat-label">Eval Pass</div>
       </div>
       <div class="stat-item">
@@ -102,7 +102,7 @@
       <div class="feature-card">
         <div class="feature-icon">✅</div>
         <h3>Eval Runner</h3>
-        <p>9 个回归 case 覆盖核心路径、失败降级、脱敏、注入防护。eval 检查 route / tool order / evidence keywords / token budget / approval status。</p>
+        <p>10 个回归 case 覆盖核心路径、失败降级、脱敏、注入防护和高风险工具审批。eval 检查 route / tool order / evidence keywords / token budget / approval status。</p>
       </div>
     </div>
   </div>
@@ -163,7 +163,7 @@
         <div class="arch-label">工具层</div>
         <div class="arch-box">
           <strong>ToolRegistry + ApprovalPolicy</strong>
-          <p>工具统一注册，metadata 含 risk level。low/medium 自动审批；high/critical 在 strict 模式触发 HITL 暂停。</p>
+          <p>工具统一注册，metadata 含 risk level。low/medium 自动审批；high/critical 由风险策略自动触发 HITL 暂停。</p>
           <div class="tags">
             <span class="arch-tag clickable" data-key="resolve_app">resolve_app</span>
             <span class="arch-tag clickable" data-key="query_logs_by_trace_id">query_logs_by_trace_id</span>
@@ -204,10 +204,10 @@
         <div class="arch-label">可观测</div>
         <div class="arch-box">
           <strong>TraceStore + Eval Runner</strong>
-          <p>每次 run 保存完整 JSON trace。Eval Runner 对 9 个 case 做回归检查。</p>
+          <p>每次 run 保存完整 JSON trace。Eval Runner 对 10 个 case 做回归检查。</p>
           <div class="tags">
             <span class="arch-tag yellow clickable" data-key="json-trace">JSON trace</span>
-            <span class="arch-tag yellow clickable" data-key="eval-runner">eval 9/9</span>
+            <span class="arch-tag yellow clickable" data-key="eval-runner">eval 10/10</span>
             <span class="arch-tag yellow clickable" data-key="replay">replay</span>
           </div>
         </div>
@@ -377,7 +377,7 @@
         <li>Self-Correction Policy：too_many_results → 自动收窄重试，可复现可 eval</li>
         <li>HITL Pending-Resume：高风险工具进入 waiting_approval，approve/reject 写入 trace</li>
         <li>Redaction + Prompt Injection Guard：安全边界由代码保证</li>
-        <li>Eval Runner：9 个回归 case，覆盖核心路径 + 失败路径 + 安全边界</li>
+        <li>Eval Runner：10 个回归 case，覆盖核心路径 + 失败路径 + 安全边界 + 高风险工具控制</li>
       </ul>
       <div class="evo-why">核心认知：Agent 的价值不在于"调了 LLM"，而在于把不确定的排障流程变成可控、可观测、可评测的工程系统。</div>
     </div>

@@ -448,7 +448,7 @@ const archDetails = {
     title: 'restart_service (HITL)',
     sections: [
       { heading: '为什么需要 HITL', body: '重启服务是不可逆操作，会造成 15-30 秒服务中断，影响线上流量。必须人工确认后才能执行。' },
-      { heading: 'ApprovalPolicy 逻辑', code: `// strict 模式下\nif (tool.riskLevel === 'high') {\n  state.status = 'waiting_approval'\n  state.pendingApprovalId = approvalId\n  throw new PendingApprovalError()\n}\n// approve → resume()\n// reject  → 生成降级报告` },
+      { heading: 'ApprovalPolicy 逻辑', code: `// 高风险工具自动进入人工审批\nif (tool.riskLevel === 'high') {\n  state.status = 'waiting_approval'\n  state.pendingApprovalId = approvalId\n  throw new PendingApprovalError()\n}\n// approve → resume()\n// reject  → 生成降级报告` },
       { heading: 'Trace 记录', body: 'approve/reject 结果写入 trace.approvals[]，可离线复盘。run 恢复后从 pending 步骤继续执行。' },
     ]
   },
@@ -477,7 +477,7 @@ const archDetails = {
   'mock-mode': {
     title: 'Mock Mode',
     sections: [
-      { heading: '设计意图', body: '默认 mock 保证本地 eval 稳定、可重复。不依赖外部 API，eval 9/9 在无网络环境下也能通过。' },
+      { heading: '设计意图', body: '默认 mock 保证本地 eval 稳定、可重复。不依赖外部 API，eval 10/10 在无网络环境下也能通过。' },
       { heading: '切换方式', code: `# .env\nLLM_MODE=openai\nLLM_BASE_URL=https://api.openai.com/v1\nLLM_API_KEY=sk-...\nLLM_MODEL=gpt-4o-mini` },
     ]
   },
@@ -498,7 +498,7 @@ const archDetails = {
   'eval-runner': {
     title: 'Eval Runner',
     sections: [
-      { heading: '覆盖范围', body: '9 个 case：\n① 500 + trace_id\n② 500 无 trace_id\n③ 504 + MySQL 慢查询\n④ 信息不足 clarification\n⑤ 模糊慢请求 LLM router\n⑥ 日志平台超时\n⑦ 慢查询平台失败\n⑧ 敏感日志脱敏\n⑨ prompt injection 防护' },
+      { heading: '覆盖范围', body: '10 个 case：\n① 500 + trace_id\n② 500 无 trace_id\n③ 504 + MySQL 慢查询\n④ 信息不足 clarification\n⑤ 模糊慢请求 LLM router\n⑥ 日志平台超时\n⑦ 慢查询平台失败\n⑧ 敏感日志脱敏\n⑨ prompt injection 防护\n⑩ 高风险工具审批控制' },
       { heading: '检查维度', code: `metrics.check(run, {\n  route: 'performance',\n  toolOrder: ['resolve_app', 'query_logs_by_condition', ...],\n  evidenceKeywords: ['HikariPool', 'P99'],\n  confidence: c => c === 'high',\n  routerUsedLlm: false,\n  tokenBudget: { router: 1000 },\n})` },
     ]
   },

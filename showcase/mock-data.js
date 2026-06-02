@@ -352,7 +352,7 @@ window.showcaseCases = [
         type: "hitl",
         prefix: "[HITL]",
         text: "高风险工具: restart_service → 触发人工审批",
-        detail: "risk: high · strict 模式 · 操作不可逆，需要人工确认",
+        detail: "risk: high · 风险策略自动触发人工审批 · 操作不可逆，需要人工确认",
         status: "pending",
         delay: 600,
         hitlPause: true,
