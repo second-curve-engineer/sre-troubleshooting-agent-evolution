@@ -5,6 +5,8 @@ __pycache__/
 .idea/
 .vscode/
 .env
+.venv/
+tmp/
 config.json
 temp_tasks/
 diagnosis_report_*.json
