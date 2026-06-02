@@ -11,3 +11,4 @@ config.json
 temp_tasks/
 diagnosis_report_*.json
 docs/images/
+docs/

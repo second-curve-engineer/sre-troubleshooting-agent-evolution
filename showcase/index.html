@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SRE Agent 故障诊断演示平台</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav>
+  <a class="nav-brand" href="#home" data-goto="home">
+    <span>SRE Agent</span>
+    <span class="nav-badge">V3</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#home"  data-section="home">首页</a></li>
+    <li><a href="#arch"  data-section="arch">系统架构</a></li>
+    <li><a href="#demo"  data-section="demo">演示 Demo</a></li>
+    <li><a href="#evo"   data-section="evo">演进历程</a></li>
+  </ul>
+</nav>
+
+<!-- ══════════════════════════════════════════════════════════
+     HOME
+═══════════════════════════════════════════════════════════ -->
+<div id="section-home" class="page-section">
+
+  <div class="hero">
+    <div class="hero-eyebrow">线上故障排查 Agent · 演示平台</div>
+    <h1>把 SRE 第一轮排障<br>变成可控的工程系统</h1>
+    <p class="hero-sub">
+      从用户描述故障，到根因分析报告，全程可观测、可评测、可复盘。
+      不是聊天机器人，而是 Router → Workflow → ToolRegistry → Evidence → Trace 的工程化 Agent。
+    </p>
+    <div class="hero-actions">
+      <button class="btn btn-primary" data-goto="demo">▶  立即体验 Demo</button>
+      <button class="btn btn-outline" data-goto="arch">查看系统架构</button>
+    </div>
+    <div class="hero-stats">
+      <div class="stat-item">
+        <div class="stat-num">9/9</div>
+        <div class="stat-label">Eval Pass</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">4</div>
+        <div class="stat-label">Workflow Routes</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">6</div>
+        <div class="stat-label">Mock Tools</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">V1→V3</div>
+        <div class="stat-label">三轮演进</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="features">
+    <div class="section-title">核心能力</div>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon">🔀</div>
+        <h3>Hybrid Router</h3>
+        <p>先用 heuristic 处理确定性信号（trace_id / 504 / 500），高置信直接路由；低置信输入才调 LLM，节省 token 又保持灵活。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🗂</div>
+        <h3>Workflow-First 控制</h3>
+        <p>每条 route 对应显式 workflow，每个 step 声明 allowedTools 白名单。关键路径由代码控制，LLM 是可替换的能力接口。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔁</div>
+        <h3>Self-Correction Policy</h3>
+        <p>工具返回 too_many_results 时，Policy 自动收窄查询条件重试。纠偏逻辑由结构化状态驱动，可复现、可限制、可 eval。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🧾</div>
+        <h3>Evidence Store</h3>
+        <p>所有工具结果转为结构化 Evidence，含 source / kind / confidence / safetyFlags。报告只基于 Evidence，不直接把原始输出塞给 LLM。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🛡</div>
+        <h3>HITL 人工审批</h3>
+        <p>高风险工具（如 restart_service）进入 pending 状态，run 暂停等待人工 approve / reject，结果写入 Trace 可复盘。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <h3>安全边界</h3>
+        <p>手机号、邮箱、Secret 在进入 LLM / report 前脱敏；日志里的 prompt injection 文本作为数据处理，不作为指令执行。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h3>结构化 Trace</h3>
+        <p>每次 run 保存 JSON trace，含 router decision / tool traces / LLM calls / approvals / evidence / report，支持离线复盘和 eval 回归。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">✅</div>
+        <h3>Eval Runner</h3>
+        <p>9 个回归 case 覆盖核心路径、失败降级、脱敏、注入防护。eval 检查 route / tool order / evidence keywords / token budget / approval status。</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+<!-- /home -->
+
+<!-- ══════════════════════════════════════════════════════════
+     ARCH
+═══════════════════════════════════════════════════════════ -->
+<div id="section-arch" class="page-section">
+<div class="arch-page">
+
+  <p class="section-title">系统设计</p>
+  <h2>控制层架构</h2>
+  <p class="sub">LLM 作为可替换能力接入，关键路径由代码显式控制 · 点击模块查看实现细节</p>
+
+  <div class="arch-layout">
+    <!-- 左：流程图 -->
+    <div class="arch-flow">
+
+      <div class="arch-row">
+        <div class="arch-label">入口</div>
+        <div class="arch-box">
+          <strong>用户输入</strong>
+          <p>自然语言故障描述，支持 trace_id / 错误码 / 服务名 / 时间窗口。CLI 或 POST /api/diagnose 均可。</p>
+        </div>
+      </div>
+
+      <div class="arch-row">
+        <div class="arch-label">路由</div>
+        <div class="arch-box">
+          <strong>Hybrid Router</strong>
+          <p>先 heuristic 判断确定性信号，高置信不调 LLM；低置信交给 LLM Router，输出经 zod schema 校验。</p>
+          <div class="tags">
+            <span class="arch-tag blue clickable" data-key="heuristic">heuristic</span>
+            <span class="arch-tag blue clickable" data-key="llm-fallback">LLM fallback</span>
+            <span class="arch-tag blue clickable" data-key="zod-validate">zod validate</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="arch-row">
+        <div class="arch-label">工作流</div>
+        <div class="arch-box">
+          <strong>Workflow Engine</strong>
+          <p>四条 workflow，每条显式声明 steps[] 和 allowedTools 白名单。ToolRegistry 拒绝白名单外的调用。</p>
+          <div class="tags">
+            <span class="arch-tag green clickable" data-key="trace-diagnosis">trace-diagnosis</span>
+            <span class="arch-tag green clickable" data-key="performance">performance</span>
+            <span class="arch-tag green clickable" data-key="condition-log">condition-log</span>
+            <span class="arch-tag clickable" data-key="clarification">clarification</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="arch-row">
+        <div class="arch-label">工具层</div>
+        <div class="arch-box">
+          <strong>ToolRegistry + ApprovalPolicy</strong>
+          <p>工具统一注册，metadata 含 risk level。low/medium 自动审批；high/critical 在 strict 模式触发 HITL 暂停。</p>
+          <div class="tags">
+            <span class="arch-tag clickable" data-key="resolve_app">resolve_app</span>
+            <span class="arch-tag clickable" data-key="query_logs_by_trace_id">query_logs_by_trace_id</span>
+            <span class="arch-tag clickable" data-key="query_logs_by_condition">query_logs_by_condition</span>
+            <span class="arch-tag clickable" data-key="query_mysql_slow_log">query_mysql_slow_log</span>
+            <span class="arch-tag clickable" data-key="ask_codebase">ask_codebase</span>
+            <span class="arch-tag red clickable" data-key="restart_service">restart_service</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="arch-row">
+        <div class="arch-label">证据 / 安全</div>
+        <div class="arch-box">
+          <strong>EvidenceStore + Redaction + Prompt Injection Guard</strong>
+          <p>工具结果转为结构化 Evidence。手机号、邮箱、Secret 进 LLM 前脱敏；日志中的 prompt injection 文本作为数据处理。</p>
+          <div class="tags">
+            <span class="arch-tag purple clickable" data-key="redaction">redaction</span>
+            <span class="arch-tag purple clickable" data-key="injection-guard">injection guard</span>
+            <span class="arch-tag purple clickable" data-key="safetyFlags">safetyFlags</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="arch-row">
+        <div class="arch-label">报告</div>
+        <div class="arch-box">
+          <strong>Report Generator</strong>
+          <p>基于 Evidence 生成结构化报告。默认 mock，配置 LLM_MODE=openai 后走 OpenAI-compatible API。</p>
+          <div class="tags">
+            <span class="arch-tag clickable" data-key="mock-mode">mock mode</span>
+            <span class="arch-tag blue clickable" data-key="openai-compatible">openai-compatible</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="arch-row">
+        <div class="arch-label">可观测</div>
+        <div class="arch-box">
+          <strong>TraceStore + Eval Runner</strong>
+          <p>每次 run 保存完整 JSON trace。Eval Runner 对 9 个 case 做回归检查。</p>
+          <div class="tags">
+            <span class="arch-tag yellow clickable" data-key="json-trace">JSON trace</span>
+            <span class="arch-tag yellow clickable" data-key="eval-runner">eval 9/9</span>
+            <span class="arch-tag yellow clickable" data-key="replay">replay</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 右：详情面板 -->
+    <div class="arch-detail-panel" id="archDetailPanel">
+      <div class="arch-detail-empty" id="archDetailEmpty">
+        <div class="arch-detail-hint">← 点击左侧任意模块<br>查看实现细节</div>
+      </div>
+      <div class="arch-detail-content" id="archDetailContent" style="display:none">
+        <div class="arch-detail-header">
+          <span class="arch-detail-tag" id="archDetailTag"></span>
+          <button class="arch-detail-close" id="archDetailClose">✕</button>
+        </div>
+        <div class="arch-detail-body" id="archDetailBody"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+<!-- /arch -->
+
+<!-- ══════════════════════════════════════════════════════════
+     DEMO
+═══════════════════════════════════════════════════════════ -->
+<div id="section-demo" class="page-section">
+<div class="demo-page">
+
+  <!-- case shelf -->
+  <div class="case-shelf">
+    <div class="case-shelf-title">Demo Cases</div>
+    <div id="caseShelf"></div>
+  </div>
+
+  <!-- terminal -->
+  <div class="terminal-wrap">
+    <div class="terminal-bar">
+      <div class="terminal-dots">
+        <span></span><span></span><span></span>
+      </div>
+      <div class="terminal-title">sre-agent · harness v3</div>
+    </div>
+    <div class="terminal-body" id="termBody">
+      <span class="term-cursor"></span>
+    </div>
+    <div class="terminal-footer">
+      <button class="run-btn" id="runBtn">▶  运行诊断</button>
+      <button class="reset-btn" id="resetBtn">重置</button>
+    </div>
+  </div>
+
+  <!-- inspector -->
+  <div class="inspector">
+
+    <div class="panel">
+      <div class="panel-header">
+        Run Summary
+        <span class="panel-badge" id="runStatusBadge">idle</span>
+      </div>
+      <div class="panel-body">
+        <div class="summary-grid">
+          <div>
+            <div class="metric-label">Route</div>
+            <div class="metric-value" id="infoRoute">-</div>
+          </div>
+          <div>
+            <div class="metric-label">Problem</div>
+            <div class="metric-value" id="infoProblem">-</div>
+          </div>
+          <div>
+            <div class="metric-label">Router</div>
+            <div class="metric-value" id="infoRouter">-</div>
+          </div>
+          <div>
+            <div class="metric-label">LLM Calls</div>
+            <div class="metric-value" id="infoLlm">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        Tool Path
+        <span class="panel-badge" id="toolCount">0</span>
+      </div>
+      <ul class="tool-list" id="toolList">
+        <li class="muted">暂无工具调用</li>
+      </ul>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        Evidence
+        <span class="panel-badge" id="evidenceCount">0</span>
+      </div>
+      <ul class="evidence-list" id="evidenceList">
+        <li class="muted">暂无证据</li>
+      </ul>
+    </div>
+
+  </div>
+
+</div>
+</div>
+<!-- /demo -->
+
+<!-- ══════════════════════════════════════════════════════════
+     EVOLUTION
+═══════════════════════════════════════════════════════════ -->
+<div id="section-evo" class="page-section">
+<div class="evo-page">
+
+  <p class="section-title">项目演进</p>
+  <h2>从 Workflow 到 Agent Harness</h2>
+  <p class="sub">三轮迭代，每轮解决一个工程化问题</p>
+
+  <div class="evo-timeline">
+
+    <div class="evo-item v1">
+      <div class="evo-version">
+        <span class="evo-tag">V1</span>
+        <span class="evo-title">AI 辅助的硬编码 Workflow</span>
+      </div>
+      <p class="evo-desc">
+        验证 AI 辅助排障的可行性。把故障排查拆成固定步骤，调用 Claude Code CLI 做根因分析，Streamlit 展示结果。
+      </p>
+      <ul class="evo-points">
+        <li>固定流程：trace_id → 查日志 → 分析异常栈 → 定位代码 → 生成报告</li>
+        <li>证明了故障排查可以被拆成可重复 workflow</li>
+        <li>日志 + 异常栈 + 源码 + LLM 可以组合成工程师可读的诊断报告</li>
+      </ul>
+      <div class="evo-why">问题：workflow 写死，工具职责耦合，没有结构化 trace 和 eval，LLM 调用缺少 timeout / fallback。</div>
+    </div>
+
+    <div class="evo-item v2">
+      <div class="evo-version">
+        <span class="evo-tag">V2</span>
+        <span class="evo-title">基于 agno 的 Tool-Using Agent</span>
+      </div>
+      <p class="evo-desc">
+        使用 Agent 框架快速验证 tool-using 形态。把排障步骤拆成工具，由 Agent 根据自然语言选择调用顺序。
+      </p>
+      <ul class="evo-points">
+        <li>自然语言入口替代固定表单，更符合真实排障方式</li>
+        <li>工具列表 + instructions 验证 tool-using 方向可行</li>
+        <li>前端双栏 workbench 展示工具路径和证据摘要</li>
+      </ul>
+      <div class="evo-why">问题：控制权在框架和 prompt 中，关键路径不显式；工具选择依赖 Agent 行为，难以限制；安全边界和 eval 不成体系。</div>
+    </div>
+
+    <div class="evo-item v3">
+      <div class="evo-version">
+        <span class="evo-tag">V3</span>
+        <span class="evo-title">Workflow-First Lightweight Agent Harness</span>
+      </div>
+      <p class="evo-desc">
+        把控制层拿回来。LLM 作为可替换能力接入，关键路径由代码显式控制。
+      </p>
+      <ul class="evo-points">
+        <li>Hybrid Router：heuristic 优先，低置信才调 LLM，输出经 zod 校验</li>
+        <li>Workflow 显式声明 allowedTools，ToolRegistry 拒绝白名单外调用</li>
+        <li>Self-Correction Policy：too_many_results → 自动收窄重试，可复现可 eval</li>
+        <li>HITL Pending-Resume：高风险工具进入 waiting_approval，approve/reject 写入 trace</li>
+        <li>Redaction + Prompt Injection Guard：安全边界由代码保证</li>
+        <li>Eval Runner：9 个回归 case，覆盖核心路径 + 失败路径 + 安全边界</li>
+      </ul>
+      <div class="evo-why">核心认知：Agent 的价值不在于"调了 LLM"，而在于把不确定的排障流程变成可控、可观测、可评测的工程系统。</div>
+    </div>
+
+    <div class="evo-item next">
+      <div class="evo-version">
+        <span class="evo-tag">Next</span>
+        <span class="evo-title">LLM Step Planner + Real Adapters</span>
+      </div>
+      <p class="evo-desc">
+        在 Policy Guard 后面引入 LLM Step Planner，让模型获得更多 planning 权重，但执行权仍由 ToolRegistry 和 allowedTools 控制。
+      </p>
+      <ul class="evo-points">
+        <li>LLM Planner 输出 selectedTool / toolInput / reason / expectedEvidence</li>
+        <li>Policy Guard 校验 allowedTools / schema / risk / token budget</li>
+        <li>RecordedAdapter：用历史 trace 模拟真实平台输出，支持 replay</li>
+        <li>PendingRunStore 持久化：server 重启后可恢复 pending approval</li>
+      </ul>
+      <div class="evo-why">原则：LLM 可以获得更多 planning 权重，但执行权仍由 ToolRegistry、allowedTools、schema、risk policy 和 eval 控制。</div>
+    </div>
+
+  </div>
+</div>
+</div>
+<!-- /evo -->
+
+<script src="mock-data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,551 @@
+// ── nav routing ──────────────────────────────────────────────────────────────
+const sections = ['home', 'arch', 'demo', 'evo'];
+const navLinks = document.querySelectorAll('.nav-links a[data-section]');
+
+function showSection(id) {
+  sections.forEach(s => {
+    document.getElementById('section-' + s).classList.toggle('active', s === id);
+  });
+  navLinks.forEach(a => a.classList.toggle('active', a.dataset.section === id));
+  if (id === 'demo' && !demoInitialized) initDemo();
+}
+
+navLinks.forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    showSection(a.dataset.section);
+    history.pushState({}, '', '#' + a.dataset.section);
+  });
+});
+
+document.querySelectorAll('[data-goto]').forEach(el => {
+  el.addEventListener('click', () => showSection(el.dataset.goto));
+});
+
+const hash = location.hash.replace('#', '');
+showSection(sections.includes(hash) ? hash : 'home');
+window.addEventListener('popstate', () => {
+  const h = location.hash.replace('#', '');
+  showSection(sections.includes(h) ? h : 'home');
+});
+
+// ── demo ──────────────────────────────────────────────────────────────────────
+let demoInitialized = false;
+let currentCase = null;
+let isRunning = false;
+let animTimer = null;
+let hitlPaused = false;
+let pendingSteps = [];
+
+const cases = window.showcaseCases || [];
+
+// inspector state
+let toolItems = [];
+let evidenceItems = [];
+let llmCount = 0;
+
+function initDemo() {
+  demoInitialized = true;
+  renderCaseList();
+  selectCase(cases[0]);
+}
+
+function renderCaseList() {
+  const shelf = document.getElementById('caseShelf');
+  shelf.innerHTML = '';
+  cases.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'case-card';
+    btn.dataset.caseId = c.id;
+    btn.innerHTML = `
+      <div class="case-card-top">
+        <div>
+          <span class="case-card-category">${esc(c.category)}</span>
+          <span class="case-card-title">${esc(c.title)}</span>
+        </div>
+        ${c.badge ? `<span class="case-card-badge">${esc(c.badge)}</span>` : ''}
+      </div>
+      <div class="case-card-desc">${esc(c.desc)}</div>
+      <div class="case-card-checks">${c.checks.map(ch => `<span>${esc(ch)}</span>`).join('')}</div>
+    `;
+    btn.addEventListener('click', () => selectCase(c));
+    shelf.appendChild(btn);
+  });
+}
+
+function selectCase(c) {
+  if (isRunning) return;
+  currentCase = c;
+  document.querySelectorAll('.case-card').forEach(b => {
+    b.classList.toggle('active', b.dataset.caseId === c.id);
+  });
+  resetTerminal();
+  setRunBtn(false, '▶  运行诊断');
+  // show hint
+  appendLine('comment', '', `# 已选: ${c.title} — 点击「运行诊断」开始`, '');
+}
+
+function resetTerminal() {
+  clearTimeout(animTimer);
+  isRunning = false;
+  hitlPaused = false;
+  pendingSteps = [];
+  toolItems = [];
+  evidenceItems = [];
+  llmCount = 0;
+  document.getElementById('termBody').innerHTML = '<span class="term-cursor"></span>';
+  renderInspector();
+}
+
+// ── terminal rendering ────────────────────────────────────────────────────────
+function esc(v) {
+  return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function scrollTerm() {
+  const el = document.getElementById('termBody');
+  el.scrollTop = el.scrollHeight;
+}
+
+function removeCursor() {
+  const c = document.getElementById('termBody').querySelector('.term-cursor');
+  if (c) c.remove();
+}
+
+function addCursor() {
+  const el = document.getElementById('termBody');
+  const cur = document.createElement('span');
+  cur.className = 'term-cursor';
+  el.appendChild(cur);
+  scrollTerm();
+}
+
+function appendLine(type, prefix, text, status) {
+  removeCursor();
+  const el = document.getElementById('termBody');
+  const line = document.createElement('div');
+  line.className = 'term-line';
+  const statusHtml = status
+    ? `<span class="term-status ${esc(status)}">${esc(status)}</span>`
+    : '';
+  line.innerHTML = `
+    <span class="term-prefix ${esc(type)}">${esc(prefix)}</span>
+    <span class="term-text">${esc(text)}${statusHtml}</span>
+  `;
+  el.appendChild(line);
+  addCursor();
+  scrollTerm();
+}
+
+function appendDetail(text) {
+  removeCursor();
+  const el = document.getElementById('termBody');
+  const d = document.createElement('div');
+  d.className = 'term-detail';
+  d.textContent = text;
+  el.appendChild(d);
+  addCursor();
+  scrollTerm();
+}
+
+function appendUserMessage(message) {
+  removeCursor();
+  const el = document.getElementById('termBody');
+  const wrap = document.createElement('div');
+  wrap.className = 'term-user-msg';
+  wrap.innerHTML = `<span class="term-user-label">故障描述</span><span class="term-user-text">${esc(message)}</span>`;
+  el.appendChild(wrap);
+  addCursor();
+  scrollTerm();
+}
+
+function appendHitlBox(step) {
+  removeCursor();
+  const el = document.getElementById('termBody');
+  const box = document.createElement('div');
+  box.className = 'hitl-box';
+  box.id = 'hitlBox';
+  const details = (step.hitlDetail || []).map(d => `<div>• ${esc(d)}</div>`).join('');
+  box.innerHTML = `
+    <div class="hitl-box-title">⚠ 等待人工审批</div>
+    <div class="hitl-box-detail">${details}</div>
+    <div class="hitl-actions">
+      <button class="hitl-approve" id="hitlApprove">✓ Approve</button>
+      <button class="hitl-reject" id="hitlReject">✗ Reject</button>
+    </div>
+  `;
+  el.appendChild(box);
+  addCursor();
+  scrollTerm();
+
+  document.getElementById('hitlApprove').addEventListener('click', () => handleHitl('approve'));
+  document.getElementById('hitlReject').addEventListener('click', () => handleHitl('reject'));
+}
+
+function appendReport(report, isReject) {
+  removeCursor();
+  const el = document.getElementById('termBody');
+  const r = isReject && currentCase.reportReject ? currentCase.reportReject : report;
+  const ul = items => `<ul>${(items||[]).map(i=>`<li>${esc(i)}</li>`).join('')}</ul>`;
+  const div = document.createElement('div');
+  div.className = 'report-bubble';
+  div.innerHTML = `
+    <h3>问题分析</h3><p>${esc(r.problemAnalysis)}</p>
+    <h3>根因判断</h3><p>${esc(r.rootCause)}</p>
+    <h3>证据</h3>${ul(r.evidence)}
+    <h3>修复建议</h3>${ul(r.suggestions)}
+    <h3>验证步骤</h3>${ul(r.verification)}
+    <div class="report-confidence">confidence: ${esc(r.confidence)}</div>
+    ${r.safetyNote ? `<div class="report-safety-note">🔒 ${esc(r.safetyNote)}</div>` : ''}
+  `;
+  el.appendChild(div);
+  addCursor();
+  scrollTerm();
+}
+
+// ── inspector ─────────────────────────────────────────────────────────────────
+function renderInspector() {
+  // summary
+  const run = currentCase?.run || {};
+  document.getElementById('infoRoute').textContent = run.route || '-';
+  document.getElementById('infoProblem').textContent = run.problemType || '-';
+  document.getElementById('infoRouter').textContent =
+    run.router ? `${run.router.source} / ${run.router.confidence}` : '-';
+  document.getElementById('infoLlm').textContent = String(llmCount);
+
+  // tool path
+  const tl = document.getElementById('toolList');
+  document.getElementById('toolCount').textContent = String(toolItems.length);
+  if (!toolItems.length) {
+    tl.innerHTML = '<li class="muted">暂无工具调用</li>';
+  } else {
+    tl.innerHTML = toolItems.map((t, i) => `
+      <li class="tool-item">
+        <span class="tool-num">${i + 1}</span>
+        <div>
+          <div class="tool-name">${esc(t.name)}</div>
+          <div class="tool-meta">${esc(t.meta)}</div>
+        </div>
+        <span class="pill ${esc(t.status)}">${esc(t.status)}</span>
+      </li>
+    `).join('');
+  }
+
+  // evidence
+  const el2 = document.getElementById('evidenceList');
+  document.getElementById('evidenceCount').textContent = String(evidenceItems.length);
+  if (!evidenceItems.length) {
+    el2.innerHTML = '<li class="muted">暂无证据</li>';
+  } else {
+    el2.innerHTML = evidenceItems.map(e => `
+      <li class="evidence-item">
+        <div class="evidence-source">${esc(e.source)}</div>
+        <div class="evidence-summary">${esc(e.summary)}</div>
+      </li>
+    `).join('');
+  }
+}
+
+// ── animation engine ──────────────────────────────────────────────────────────
+function runSteps(steps, startIdx, isRejectPath) {
+  if (startIdx >= steps.length) {
+    isRunning = false;
+    setRunBtn(false, '▶  重新运行');
+    return;
+  }
+
+  const step = steps[startIdx];
+
+  // skip steps that belong to the other HITL path
+  if (step.afterApproval && isRejectPath) { runSteps(steps, startIdx + 1, isRejectPath); return; }
+  if (step.afterReject && !isRejectPath)  { runSteps(steps, startIdx + 1, isRejectPath); return; }
+
+  animTimer = setTimeout(() => {
+    // render terminal line
+    if (step.type !== 'hitl' || !step.hitlPause) {
+      appendLine(step.type, step.prefix, step.text, step.status);
+      if (step.detail) appendDetail(step.detail);
+    }
+
+    // update inspector
+    if (step.toolName) {
+      const riskLabel = step.riskLevel ? ` · risk=${step.riskLevel}` : '';
+      const msLabel   = step.durationMs ? ` · ${step.durationMs}ms` : '';
+      toolItems.push({ name: step.toolName, meta: step.stepId || (riskLabel + msLabel), status: step.status || 'ok' });
+    }
+    if (step.evidenceSource) {
+      evidenceItems.push({ source: step.evidenceSource, summary: step.evidenceSummary || '' });
+    }
+    if (step.llmRole) llmCount++;
+    renderInspector();
+
+    // HITL pause
+    if (step.hitlPause) {
+      appendLine('hitl', step.prefix, step.text, step.status);
+      appendDetail(step.detail);
+      appendHitlBox(step);
+      hitlPaused = true;
+      pendingSteps = { steps, startIdx, isRejectPath };
+      isRunning = false;
+      setRunBtn(true, '等待审批…');
+      return;
+    }
+
+    // report
+    if (step.isReport) {
+      appendReport(currentCase.report, step.isRejectReport || isRejectPath);
+      runSteps(steps, startIdx + 1, isRejectPath);
+      return;
+    }
+
+    runSteps(steps, startIdx + 1, isRejectPath);
+  }, step.delay || 500);
+}
+
+function handleHitl(decision) {
+  if (!hitlPaused) return;
+  const box = document.getElementById('hitlBox');
+  if (box) {
+    box.querySelector('.hitl-actions').remove();
+    const note = document.createElement('div');
+    note.style.cssText = 'margin-top:8px;font-weight:700;';
+    note.style.color = decision === 'approve' ? 'var(--green)' : 'var(--red)';
+    note.textContent = decision === 'approve' ? '✓ Approved — 继续执行' : '✗ Rejected — 操作已取消';
+    box.appendChild(note);
+  }
+  appendLine('hitl', '[HITL]', `审批结果: ${decision}`, decision === 'approve' ? 'ok' : 'warning');
+
+  hitlPaused = false;
+  isRunning = true;
+  setRunBtn(true, '执行中…');
+  const { steps, startIdx } = pendingSteps;
+  const isRejectPath = decision === 'reject';
+  runSteps(steps, startIdx + 1, isRejectPath);
+}
+
+function setRunBtn(disabled, text) {
+  const btn = document.getElementById('runBtn');
+  btn.disabled = disabled;
+  btn.textContent = text;
+}
+
+document.getElementById('runBtn')?.addEventListener('click', () => {
+  if (isRunning || !currentCase) return;
+  resetTerminal();
+  isRunning = true;
+  setRunBtn(true, '执行中…');
+  // 先显示故障描述，让用户知道当前在排查什么
+  if (currentCase.message) appendUserMessage(currentCase.message);
+  appendLine('comment', '', `$ diagnose "${currentCase.id}"`, '');
+  runSteps(currentCase.animationSteps, 0, false);
+});
+
+document.getElementById('resetBtn')?.addEventListener('click', () => {
+  if (!currentCase) return;
+  resetTerminal();
+  setRunBtn(false, '▶  运行诊断');
+  appendLine('comment', '', `# 已选: ${currentCase.title} — 点击「运行诊断」开始`, '');
+});
+
+// ── arch detail panel ─────────────────────────────────────────────────────────
+const archDetails = {
+  'heuristic': {
+    title: 'heuristic 路由',
+    sections: [
+      { heading: '判断逻辑', code: `if (msg.includes('trace_id') || /trace[-_]\\w+/.test(msg))\n  → route: trace-diagnosis  (confidence: 0.95)\nif (msg.includes('504') || msg.includes('timeout'))\n  → route: performance      (confidence: 0.92)\nif (msg.includes('500') && appHint)\n  → route: condition-log    (confidence: 0.88)` },
+      { heading: '为什么不调 LLM', body: '确定性信号足够时，调 LLM 有三个代价：\n① 额外延迟 200-800ms\n② 消耗 ~500 token\n③ LLM 可能幻觉出错误 route\nheuristic 置信度 ≥ 0.85 时直接路由，结果更稳定。' },
+      { heading: '低置信时的处理', body: '置信度 < 0.85 → 交给 LLM Router Adapter，输出经 zod schema 强制校验，校验失败自动 fallback 到 clarification。' },
+    ]
+  },
+  'llm-fallback': {
+    title: 'LLM fallback',
+    sections: [
+      { heading: '触发条件', body: 'heuristic 置信度 < 0.85，或输入包含模糊表达（如"接口有点卡"、"好像有问题"）。' },
+      { heading: 'LLM 调用', code: `// src/llm/router-adapter.ts\nconst resp = await callLlm({\n  role: 'router',\n  prompt: buildRouterPrompt(userMessage),\n  model: modelPolicy.router,  // small tier\n  tokenBudget: 1000,\n})` },
+      { heading: 'Schema 校验', code: `const RouteDecisionSchema = z.object({\n  route: z.enum(['trace-diagnosis','performance',\n                 'condition-log','clarification']),\n  confidence: z.number().min(0).max(1),\n  reason: z.string(),\n})\n// 校验失败 → fallback clarification，不崩溃` },
+    ]
+  },
+  'zod-validate': {
+    title: 'zod validate',
+    sections: [
+      { heading: '为什么用 zod', body: 'LLM 输出是字符串，直接使用有类型安全风险。zod 在 parse 层强制校验，失败时抛出结构化错误，可以精确 fallback，而不是让错误数据污染下游。' },
+      { heading: '校验点', body: '① Router 输出 RouteDecisionSchema\n② Report 输出 DiagnosisReportSchema\n③ Tool 输入 per-tool input schema（部分已实现）' },
+    ]
+  },
+  'trace-diagnosis': {
+    title: 'trace-diagnosis workflow',
+    sections: [
+      { heading: '触发条件', body: '用户输入包含 trace_id（如 trace-xxx、txid-xxx）。heuristic 置信度 0.95，不调 LLM。' },
+      { heading: 'Steps & allowedTools', code: `steps: [\n  { id: 'resolve',   tool: 'resolve_app' },\n  { id: 'trace_log', tool: 'query_logs_by_trace_id' },\n  { id: 'codebase',  tool: 'ask_codebase' },\n]\nallowedTools: [\n  'resolve_app',\n  'query_logs_by_trace_id',\n  'ask_codebase',\n]` },
+      { heading: '白名单保护', body: 'ToolRegistry 收到调用时先检查 allowedTools，不在白名单内直接拒绝，即使 LLM 尝试调用高风险工具也无法执行。' },
+    ]
+  },
+  'performance': {
+    title: 'performance workflow',
+    sections: [
+      { heading: '触发条件', body: '输入包含 504 / timeout / 慢请求。内置 Self-Correction Policy。' },
+      { heading: 'Self-Correction 逻辑', code: `// 第一次查询\nresult = query_logs_by_condition({ httpStatus: 504 })\n\n// 返回 too_many_results (847 条)\nif (result.status === 'too_many_results') {\n  // policy 介入，收窄条件\n  result = query_logs_by_condition({\n    httpStatus: 504,\n    keyword: 'timeout'  // 加入关键词\n  })\n}` },
+      { heading: '慢 SQL 关联', body: '日志命中 connection timeout 线索后，自动触发 query_mysql_slow_log，关联 DB 层根因。' },
+      { heading: 'allowedTools', code: `['resolve_app', 'query_logs_by_condition',\n 'query_mysql_slow_log', 'restart_service']` },
+    ]
+  },
+  'condition-log': {
+    title: 'condition-log workflow',
+    sections: [
+      { heading: '触发条件', body: '有错误码（如 ERR_10086 / HTTP 500）但没有 trace_id。' },
+      { heading: 'Steps', code: `1. resolve_app\n2. query_logs_by_condition\n   (httpStatus=500 / errorCode=ERR_10086)\n3. 命中日志后提取 trace_id\n4. 复用 query_logs_by_trace_id\n   做精确链路分析` },
+      { heading: '设计意图', body: '先宽后窄：条件查询找到线索，再用 trace_id 精确定位。避免一上来就全量扫描。' },
+    ]
+  },
+  'clarification': {
+    title: 'clarification workflow',
+    sections: [
+      { heading: '触发条件', body: 'LLM Router 置信度 < 0.4，或 heuristic 无法提取任何确定性信号。' },
+      { heading: '行为', body: '不调用任何工具，直接生成追问报告，列出需要补充的信息：\n① 具体服务名称\n② 错误类型或 trace_id\n③ 问题出现的时间窗口' },
+      { heading: '为什么不猜', body: '盲目执行工具消耗资源，且可能查错服务。信息不足时明确追问比乱猜更专业。' },
+    ]
+  },
+  'resolve_app': {
+    title: 'resolve_app',
+    sections: [
+      { heading: '作用', body: '将用户输入的系统名映射为标准 appId 和代码库路径。所有 workflow 的第一步。' },
+      { heading: '输入 / 输出', code: `input:  { query: "order-service" }\noutput: {\n  appId: "app-001",\n  realName: "order-service",\n  repoPath: "/repos/order-service"\n}` },
+      { heading: 'risk level', body: 'low — 只读查询，自动审批，无需 HITL。' },
+    ]
+  },
+  'query_logs_by_trace_id': {
+    title: 'query_logs_by_trace_id',
+    sections: [
+      { heading: '作用', body: '按 trace_id 查完整链路日志，适合已知 trace_id 的精确定位场景。' },
+      { heading: '输入 / 输出', code: `input:  { traceId: "demo-trace-001", appId: "app-001" }\noutput: {\n  status: "ok",\n  count: 23,\n  logs: [{ timestamp, level, message, class, line }]\n}` },
+      { heading: 'risk level', body: 'low — 只读，自动审批。' },
+    ]
+  },
+  'query_logs_by_condition': {
+    title: 'query_logs_by_condition',
+    sections: [
+      { heading: '作用', body: '按条件查日志，适合没有 trace_id 但有错误信号的场景。' },
+      { heading: '输入 / 输出', code: `input: {\n  appId: "app-001",\n  conditions: { httpStatus: 504, keyword: "timeout" },\n  windowMin: 10\n}\noutput: { status: "ok"|"too_many_results"|"empty", count, logs }` },
+      { heading: 'Self-Correction 触发点', body: 'status === "too_many_results" 时，Self-Correction Policy 介入，自动收窄条件重试，最多 1 次。' },
+    ]
+  },
+  'query_mysql_slow_log': {
+    title: 'query_mysql_slow_log',
+    sections: [
+      { heading: '作用', body: '查 MySQL 慢查询日志，performance workflow 专用，在日志命中 connection timeout 线索后触发。' },
+      { heading: '输出', code: `output: {\n  slowQueries: [{\n    sql: "SELECT o.*, i.* FROM orders o JOIN ...",\n    p99Ms: 4200,\n    avgMs: 3100,\n    execCount: 1240,\n    recommendation: "order_items.order_id 缺少索引"\n  }]\n}` },
+      { heading: 'risk level', body: 'medium — 只读，自动审批并记录。' },
+    ]
+  },
+  'ask_codebase': {
+    title: 'ask_codebase',
+    sections: [
+      { heading: '作用', body: '向代码库提问，定位异常代码上下文。默认返回 mock 答案，可配置 Claude Code CLI 接入真实代码库。' },
+      { heading: '输入 / 输出', code: `input: {\n  question: "OrderCheckoutService.java line 142 NPE",\n  appId: "app-001"\n}\noutput: {\n  answer: "第 142 行调用 userProfile.getDiscount()...",\n  codeSnippet: "// line 142:\\ndiscount = userProfile.getDiscount();"\n}` },
+    ]
+  },
+  'restart_service': {
+    title: 'restart_service (HITL)',
+    sections: [
+      { heading: '为什么需要 HITL', body: '重启服务是不可逆操作，会造成 15-30 秒服务中断，影响线上流量。必须人工确认后才能执行。' },
+      { heading: 'ApprovalPolicy 逻辑', code: `// strict 模式下\nif (tool.riskLevel === 'high') {\n  state.status = 'waiting_approval'\n  state.pendingApprovalId = approvalId\n  throw new PendingApprovalError()\n}\n// approve → resume()\n// reject  → 生成降级报告` },
+      { heading: 'Trace 记录', body: 'approve/reject 结果写入 trace.approvals[]，可离线复盘。run 恢复后从 pending 步骤继续执行。' },
+    ]
+  },
+  'redaction': {
+    title: 'Redaction 脱敏',
+    sections: [
+      { heading: '脱敏规则', code: `手机号:  /1[3-9]\\d{9}/g  → [PHONE_REDACTED]\n邮箱:    /\\S+@\\S+\\.\\w+/g → [EMAIL_REDACTED]\nSecret:  /(?:secret|key|token|password)=\\S+/gi\n                          → [SECRET_REDACTED]` },
+      { heading: '处理时机', body: 'tool output 进入 EvidenceStore 前处理，也在 tool trace 的 input/outputSummary 保存前处理。原始敏感值不出现在 LLM prompt 或最终报告中。' },
+      { heading: 'eval 验证', body: 'redaction_sensitive_log case 验证：手机号 / 邮箱 / secret 均被替换，报告中不含原始值。' },
+    ]
+  },
+  'injection-guard': {
+    title: 'Prompt Injection Guard',
+    sections: [
+      { heading: '检测模式', code: `patterns: [\n  /ignore (previous|all) instructions/i,\n  /you are now/i,\n  /system prompt/i,\n  /disregard/i,\n]` },
+      { heading: '处理方式', body: '检测到注入文本时：\n① 标记 evidence.safetyFlags = ["injection_attempt"]\n② 日志内容作为数据写入证据，不作为指令执行\n③ 报告中注明安全标记，不透传给 LLM' },
+    ]
+  },
+  'safetyFlags': {
+    title: 'Evidence safetyFlags',
+    sections: [
+      { heading: 'Evidence 结构', code: `interface Evidence {\n  source: string        // 来源工具\n  kind: string          // log | slow_query | code...\n  summary: string       // 摘要\n  confidence: number    // 0-1\n  usedInFinalReport: boolean\n  safetyFlags: string[] // ["redacted", "injection_attempt"]\n}` },
+      { heading: '为什么分层', body: 'raw tool output → Evidence（摘要 + 安全处理）→ Report。LLM 只看 Evidence，不直接接触原始数据，降低信息泄露和注入风险。' },
+    ]
+  },
+  'mock-mode': {
+    title: 'Mock Mode',
+    sections: [
+      { heading: '设计意图', body: '默认 mock 保证本地 eval 稳定、可重复。不依赖外部 API，eval 9/9 在无网络环境下也能通过。' },
+      { heading: '切换方式', code: `# .env\nLLM_MODE=openai\nLLM_BASE_URL=https://api.openai.com/v1\nLLM_API_KEY=sk-...\nLLM_MODEL=gpt-4o-mini` },
+    ]
+  },
+  'openai-compatible': {
+    title: 'OpenAI-compatible API',
+    sections: [
+      { heading: '支持范围', body: 'Router Adapter 和 Report Generator 均支持 OpenAI Chat Completions 格式，兼容 OpenAI / Azure OpenAI / 本地 Ollama / 任意 OpenAI-compatible 服务。' },
+      { heading: 'LLM 调用保护', code: `// ModelPolicy 限制\nrouter:  { model: 'small', tokenBudget: 1000 }\nreport:  { model: 'standard', tokenBudget: 4000 }\n\n// 超 budget → eval 标记失败\n// API 失败  → fallback mock，不崩溃` },
+    ]
+  },
+  'json-trace': {
+    title: 'JSON Trace',
+    sections: [
+      { heading: 'Trace 结构', code: `{\n  version: "3",\n  createdAt: "...",\n  run: {\n    runId, sessionId, status,\n    userMessage,\n    router: { source, confidence, route },\n    decision: { route, problemType },\n    toolTraces: [{ toolName, status, durationMs, ... }],\n    llmCalls:   [{ role, model, tokenUsage, ... }],\n    approvals:  [{ approvalId, status, ... }],\n    evidence:   [{ source, summary, safetyFlags }],\n    finalReport: { rootCause, confidence, ... }\n  }\n}` },
+      { heading: '用途', body: '① 离线复盘：Trace Viewer 可视化展示\n② eval 回归：从 trace 提取 route / tool order / evidence 做断言\n③ 失败分析：工具超时 / LLM 失败均记录在 trace 中' },
+    ]
+  },
+  'eval-runner': {
+    title: 'Eval Runner',
+    sections: [
+      { heading: '覆盖范围', body: '9 个 case：\n① 500 + trace_id\n② 500 无 trace_id\n③ 504 + MySQL 慢查询\n④ 信息不足 clarification\n⑤ 模糊慢请求 LLM router\n⑥ 日志平台超时\n⑦ 慢查询平台失败\n⑧ 敏感日志脱敏\n⑨ prompt injection 防护' },
+      { heading: '检查维度', code: `metrics.check(run, {\n  route: 'performance',\n  toolOrder: ['resolve_app', 'query_logs_by_condition', ...],\n  evidenceKeywords: ['HikariPool', 'P99'],\n  confidence: c => c === 'high',\n  routerUsedLlm: false,\n  tokenBudget: { router: 1000 },\n})` },
+    ]
+  },
+  'replay': {
+    title: 'Replay（待实现）',
+    sections: [
+      { heading: '设计目标', body: '从历史 trace 重放一次 run，RecordedAdapter 读取历史 tool output 代替真实平台调用。' },
+      { heading: '用途', body: '① 复现线上故障\n② 验证 harness 逻辑变更是否影响已知路径\n③ 把失败 trace 直接转成 eval case' },
+      { heading: '当前状态', body: 'Trace 结构已包含重放所需的全部信息（tool input/output、router decision、workflow steps），RecordedAdapter 接口已规划，实现列为 next 优先级。', warn: true },
+    ]
+  },
+};
+
+function renderArchDetail(key) {
+  const data = archDetails[key];
+  if (!data) return;
+
+  document.getElementById('archDetailEmpty').style.display = 'none';
+  const content = document.getElementById('archDetailContent');
+  content.style.display = 'flex';
+  document.getElementById('archDetailTag').textContent = data.title;
+
+  const body = document.getElementById('archDetailBody');
+  body.innerHTML = data.sections.map(s => {
+    let html = `<h4>${esc(s.heading)}</h4>`;
+    if (s.code) html += `<code>${esc(s.code)}</code>`;
+    if (s.body) {
+      const text = esc(s.body).replace(/\n/g, '<br>');
+      html += `<p>${text}</p>`;
+    }
+    return html;
+  }).join('');
+
+  // highlight active tag
+  document.querySelectorAll('.arch-tag.clickable').forEach(t => {
+    t.classList.toggle('active', t.dataset.key === key);
+  });
+}
+
+document.getElementById('archDetailClose')?.addEventListener('click', () => {
+  document.getElementById('archDetailEmpty').style.display = 'flex';
+  document.getElementById('archDetailContent').style.display = 'none';
+  document.querySelectorAll('.arch-tag.clickable').forEach(t => t.classList.remove('active'));
+});
+
+document.addEventListener('click', e => {
+  const tag = e.target.closest('.arch-tag.clickable');
+  if (!tag) return;
+  renderArchDetail(tag.dataset.key);
+});
