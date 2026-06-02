@@ -46,15 +46,21 @@ input {
 
 .shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 390px;
+  grid-template-columns: 292px minmax(0, 1fr) 390px;
   gap: 16px;
-  width: min(1480px, calc(100vw - 32px));
+  width: min(1720px, calc(100vw - 32px));
   height: calc(100vh - 32px);
   margin: 16px auto;
+  transition: grid-template-columns 180ms ease;
+}
+
+.shell.casesCollapsed {
+  grid-template-columns: 48px minmax(0, 1fr) 390px;
 }
 
 .workspace,
-.inspector {
+.inspector,
+.caseShelf {
   min-height: 0;
 }
 
@@ -139,6 +145,163 @@ h2 {
   padding: 28px 20px;
   background: var(--surface-soft);
   scroll-behavior: smooth;
+}
+
+.caseShelf {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.caseShelfHeader {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.caseShelfHeader p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.caseShelfActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.caseRailLabel {
+  display: none;
+}
+
+.caseList {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.caseCard {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  height: auto;
+  min-height: 104px;
+  padding: 10px;
+  border-radius: 8px;
+  text-align: left;
+  background: var(--surface);
+}
+
+.caseCard:hover:not(:disabled),
+.caseCard:focus-visible {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.caseTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.caseTop strong {
+  display: block;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.caseCategory {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.routeTag {
+  flex-shrink: 0;
+  align-self: flex-start;
+  max-width: 104px;
+  overflow: hidden;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: var(--ink-secondary);
+  font-size: 10px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.caseChecks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.caseChecks span {
+  min-width: 0;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: var(--ink-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.casesCollapsed .caseShelf {
+  align-items: center;
+  padding: 10px 0;
+}
+
+.casesCollapsed .caseShelfHeader {
+  display: none;
+}
+
+.casesCollapsed .caseList {
+  display: none;
+}
+
+.casesCollapsed .caseRailLabel {
+  display: block;
+  margin-top: 46px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+}
+
+.casesCollapsed .caseShelf::before {
+  content: "展开";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-height: 32px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--ink-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .message {
@@ -324,18 +487,6 @@ button:disabled {
   font-size: 12px;
 }
 
-.toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 38px;
-  padding: 0 10px;
-  color: var(--ink-secondary);
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
 .inspector {
   display: flex;
   flex-direction: column;
@@ -456,7 +607,8 @@ button:disabled {
 
 .pill.timeout,
 .pill.pending,
-.pill.waiting_approval {
+.pill.waiting_approval,
+.pill.cancelled {
   background: #fef3c7;
   color: #92400e;
 }
@@ -533,6 +685,11 @@ button:disabled {
   background: #fffbeb;
 }
 
+.approvalBox.handled {
+  border-color: var(--line-strong);
+  background: var(--surface-soft);
+}
+
 .approvalActions {
   display: flex;
   gap: 8px;
@@ -558,8 +715,24 @@ button:disabled {
     margin: 12px auto;
   }
 
+  .shell.casesCollapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .caseShelf {
+    max-height: 360px;
+  }
+
+  .casesCollapsed .caseShelf {
+    display: none;
+  }
+
   .workspace {
     min-height: 72vh;
+  }
+
+  .caseList {
+    grid-template-columns: 1fr;
   }
 
   .composer {

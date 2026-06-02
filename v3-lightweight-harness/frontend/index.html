@@ -8,6 +8,21 @@
   </head>
   <body>
     <main class="shell">
+      <aside class="caseShelf" id="caseShelf" aria-label="演示 Case">
+        <div class="caseShelfHeader">
+          <div>
+            <h2>Demo Cases</h2>
+            <p>公开仓库使用脱敏 mock 数据，case 来自当前 eval 回归集和 HITL 演示路径。</p>
+          </div>
+          <div class="caseShelfActions">
+            <span class="badge" id="caseCount">0</span>
+            <button class="ghost" id="caseToggle" type="button" aria-expanded="true">收起</button>
+          </div>
+        </div>
+        <div class="caseRailLabel">Cases</div>
+        <div class="caseList" id="caseList"></div>
+      </aside>
+
       <section class="workspace" aria-label="故障排查工作区">
         <header class="topbar">
           <div>
@@ -36,10 +51,6 @@
             placeholder="例如：order-service 下单接口从 10:30 开始大量 504，帮我排查。"
           ></textarea>
           <div class="composerActions">
-            <label class="toggle">
-              <input type="checkbox" id="strictMode" />
-              <span>Strict HITL</span>
-            </label>
             <button type="button" id="exampleBtn">示例</button>
             <button type="submit" id="sendBtn">诊断</button>
           </div>
@@ -99,6 +110,7 @@
       </aside>
     </main>
 
+    <script src="/demo-cases.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>

@@ -227,7 +227,7 @@ export class HarnessRunner {
 
       if (!this.approvalPolicy.canExecute(approval)) {
         result = {
-          status: "error",
+          status: "cancelled",
           summary: `工具 ${toolName} 风险等级 ${metadata.riskLevel}，审批状态 ${approval.status}，未执行`,
           outputSummary: {
             riskLevel: metadata.riskLevel,

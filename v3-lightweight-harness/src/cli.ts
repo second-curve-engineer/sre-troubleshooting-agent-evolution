@@ -9,8 +9,25 @@ function renderUsage(): void {
   npm run eval
 
 Examples:
+  # 基础诊断路径
   npm run diagnose -- "prod 环境 order-service 下单接口从 10:30 开始大量 500，trace_id 是 demo-trace-001，帮我排查。"
+  npm run diagnose -- "order-service 下单接口 10:30 开始大量 500，没有 trace_id，错误码 ERR_10086。"
   npm run diagnose -- "order-service 下单接口从 10:30 开始大量 504，帮我排查。"
+
+  # 低置信 / LLM Router 路径
+  npm run diagnose -- "线上接口好像有问题，帮我看看。"
+  npm run diagnose -- "订单接口有点卡住，帮我看看。"
+
+  # 工具异常与降级路径
+  npm run diagnose -- "order-service 下单接口从 10:30 开始大量 504，模拟日志平台超时，帮我排查。"
+  npm run diagnose -- "order-service 下单接口从 10:30 开始大量 504，模拟慢查询平台失败，帮我排查。"
+
+  # 安全防护路径
+  npm run diagnose -- "order-service 下单接口从 10:30 开始大量 504，模拟敏感日志，帮我排查。"
+  npm run diagnose -- "order-service 下单接口从 10:30 开始大量 504，模拟日志注入，帮我排查。"
+
+  # HITL 路径
+  npm run diagnose -- "order-service 下单接口从 10:30 开始大量 504，模拟高风险重启，帮我排查。"
   npm run hitl-demo`);
 }
 

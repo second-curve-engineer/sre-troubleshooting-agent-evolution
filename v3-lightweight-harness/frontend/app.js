@@ -1,9 +1,10 @@
+const shell = document.querySelector(".shell");
+const caseShelf = document.querySelector("#caseShelf");
 const chatLog = document.querySelector("#chatLog");
 const form = document.querySelector("#diagnoseForm");
 const input = document.querySelector("#messageInput");
 const sendBtn = document.querySelector("#sendBtn");
 const exampleBtn = document.querySelector("#exampleBtn");
-const strictMode = document.querySelector("#strictMode");
 const modeLabel = document.querySelector("#modeLabel");
 const runStatus = document.querySelector("#runStatus");
 const summaryGrid = document.querySelector("#summaryGrid");
@@ -15,14 +16,15 @@ const evidenceList = document.querySelector("#evidenceList");
 const evidenceCount = document.querySelector("#evidenceCount");
 const traceList = document.querySelector("#traceList");
 const refreshBtn = document.querySelector("#refreshBtn");
+const caseList = document.querySelector("#caseList");
+const caseCount = document.querySelector("#caseCount");
+const caseToggle = document.querySelector("#caseToggle");
 
-const example =
-  "order-service 下单接口从 10:30 开始大量 504，帮我排查。";
-const hitlExample =
-  "order-service 下单接口从 10:30 开始大量 504，模拟高风险重启，帮我排查。";
+const demoCases = window.demoCases || [];
 
 let sessionId = localStorage.getItem("v3-session-id") || `web-${crypto.randomUUID()}`;
 localStorage.setItem("v3-session-id", sessionId);
+let casesCollapsed = localStorage.getItem("v3-cases-collapsed") === "true";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -81,6 +83,21 @@ function renderApproval(state) {
       </div>
     </div>
   `;
+}
+
+function markApprovalHandled(approvalId, decision) {
+  for (const button of document.querySelectorAll(`[data-approval="${CSS.escape(approvalId)}"]`)) {
+    button.disabled = true;
+  }
+  for (const box of document.querySelectorAll(".approvalBox")) {
+    if (box.textContent.includes(approvalId)) {
+      box.classList.add("handled");
+      const handled = document.createElement("div");
+      handled.className = "muted";
+      handled.textContent = `handled: ${decision}`;
+      box.appendChild(handled);
+    }
+  }
 }
 
 function renderSummary(state) {
@@ -163,6 +180,42 @@ function renderEvidence(items) {
     .join("");
 }
 
+function renderCases() {
+  caseCount.textContent = String(demoCases.length);
+  caseList.innerHTML = demoCases
+    .map(
+      (item) => `
+        <button class="caseCard" type="button" data-case-id="${escapeHtml(item.id)}">
+          <span class="caseTop">
+            <span>
+              <span class="caseCategory">${escapeHtml(item.category)}</span>
+              <strong>${escapeHtml(item.title)}</strong>
+            </span>
+            <span class="routeTag">${escapeHtml(item.route)}</span>
+          </span>
+          <span class="caseChecks">${item.checks.map((check) => `<span>${escapeHtml(check)}</span>`).join("")}</span>
+        </button>
+      `
+    )
+    .join("");
+}
+
+function needsApprovalMode(message, demoCase) {
+  return Boolean(demoCase?.requiresApproval || message.includes("模拟高风险重启"));
+}
+
+function approvalModeFor(message, demoCase) {
+  return needsApprovalMode(message, demoCase) ? "strict" : "auto";
+}
+
+function setCasesCollapsed(collapsed) {
+  casesCollapsed = collapsed;
+  shell.classList.toggle("casesCollapsed", collapsed);
+  caseToggle.textContent = collapsed ? "展开" : "收起";
+  caseToggle.setAttribute("aria-expanded", String(!collapsed));
+  localStorage.setItem("v3-cases-collapsed", String(collapsed));
+}
+
 function renderState(state) {
   renderSummary(state);
   renderTools(state.toolTraces || []);
@@ -175,7 +228,6 @@ function setBusy(isBusy) {
   sendBtn.disabled = isBusy;
   exampleBtn.disabled = isBusy;
   input.disabled = isBusy;
-  strictMode.disabled = isBusy;
   sendBtn.textContent = isBusy ? "分析中…" : "诊断";
 }
 
@@ -190,6 +242,33 @@ async function postJson(url, body = {}) {
     throw new Error(error.error || `HTTP ${response.status}`);
   }
   return response.json();
+}
+
+async function runDiagnosis(message, approvalMode) {
+  appendMessage("user", escapeHtml(message));
+  input.value = "";
+  setBusy(true);
+  const loadingNode = appendMessage("assistant", "正在执行 router、workflow 和工具调用…", true);
+
+  try {
+    const state = await postJson("/api/diagnose", {
+      message,
+      sessionId,
+      approvalMode
+    });
+    sessionId = state.sessionId;
+    localStorage.setItem("v3-session-id", sessionId);
+    renderState(state);
+    loadingNode.querySelector(".bubble").classList.remove("loading");
+    loadingNode.querySelector(".bubble").innerHTML = `${renderReport(state.finalReport)}${renderApproval(state)}`;
+    await loadTraces();
+  } catch (error) {
+    loadingNode.querySelector(".bubble").classList.remove("loading");
+    loadingNode.querySelector(".bubble").textContent = `诊断请求失败：${error.message}`;
+  } finally {
+    setBusy(false);
+    input.focus();
+  }
 }
 
 async function loadTraces() {
@@ -228,7 +307,8 @@ async function loadTrace(runId) {
 }
 
 exampleBtn.addEventListener("click", () => {
-  input.value = strictMode.checked ? hitlExample : example;
+  const item = demoCases.find((demoCase) => demoCase.id === "timeout_504_mysql") || demoCases[0];
+  input.value = item.message;
   input.focus();
 });
 
@@ -237,30 +317,25 @@ form.addEventListener("submit", async (event) => {
   const message = input.value.trim();
   if (!message) return;
 
-  appendMessage("user", escapeHtml(message));
-  input.value = "";
-  setBusy(true);
-  const loadingNode = appendMessage("assistant", "正在执行 router、workflow 和工具调用…", true);
+  await runDiagnosis(message, approvalModeFor(message));
+});
 
-  try {
-    const state = await postJson("/api/diagnose", {
-      message,
-      sessionId,
-      approvalMode: strictMode.checked ? "strict" : "auto"
-    });
-    sessionId = state.sessionId;
-    localStorage.setItem("v3-session-id", sessionId);
-    renderState(state);
-    loadingNode.querySelector(".bubble").classList.remove("loading");
-    loadingNode.querySelector(".bubble").innerHTML = `${renderReport(state.finalReport)}${renderApproval(state)}`;
-    await loadTraces();
-  } catch (error) {
-    loadingNode.querySelector(".bubble").classList.remove("loading");
-    loadingNode.querySelector(".bubble").textContent = `诊断请求失败：${error.message}`;
-  } finally {
-    setBusy(false);
-    input.focus();
-  }
+caseList.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-case-id]");
+  if (!button || sendBtn.disabled) return;
+  const item = demoCases.find((demoCase) => demoCase.id === button.dataset.caseId);
+  if (!item) return;
+  input.value = item.message;
+  await runDiagnosis(item.message, approvalModeFor(item.message, item));
+});
+
+caseToggle.addEventListener("click", () => {
+  setCasesCollapsed(!casesCollapsed);
+});
+
+caseShelf.addEventListener("click", (event) => {
+  if (!casesCollapsed || event.target.closest("button")) return;
+  setCasesCollapsed(false);
 });
 
 chatLog.addEventListener("click", async (event) => {
@@ -271,6 +346,7 @@ chatLog.addEventListener("click", async (event) => {
     const approvalId = button.dataset.approval;
     const decision = button.dataset.decision;
     const state = await postJson(`/api/approvals/${approvalId}/${decision}`);
+    markApprovalHandled(approvalId, decision);
     renderState(state);
     appendMessage("assistant", `<p>审批结果：<code>${escapeHtml(decision)}</code></p>${renderReport(state.finalReport)}`);
     await loadTraces();
@@ -289,4 +365,6 @@ refreshBtn.addEventListener("click", () => {
   void loadTraces();
 });
 
+renderCases();
+setCasesCollapsed(casesCollapsed);
 void loadTraces();
