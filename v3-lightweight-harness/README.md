@@ -18,9 +18,16 @@ npm install
 npm run diagnose -- "prod 环境 order-service 下单接口从 10:30 开始大量 500，trace_id 是 demo-trace-001，帮我排查。"
 npm run diagnose -- "order-service 下单接口从 10:30 开始大量 504，帮我排查。"
 npm run eval
+npm run server
 ```
 
 每次运行都会在 `traces/` 下生成一份 `run-*.json`，记录 router decision、tool input/output summary、evidence 和 final report。
+
+`npm run server` 会启动本地 Trace Viewer，默认地址：
+
+```bash
+http://127.0.0.1:4317
+```
 
 ## 当前已实现
 
@@ -31,12 +38,14 @@ npm run eval
 - workflow definitions：每条排障路径独立声明 step、allowedTools 和执行逻辑。
 - hybrid router：高置信 heuristic 不调用 LLM，低置信模糊输入走 LLM router adapter。
 - LLM adapter：router/report 共用一套 `LlmConfig`；默认使用 mock，设置 `LLM_MODE=openai` 后可调用 OpenAI-compatible API。
+- ModelPolicy：在统一 LLM 配置之上，按 router/report 等 Agent 阶段记录模型档位、预算和 token 使用。
 - step 级工具白名单。
 - tool risk level + approval policy：低/中风险工具自动审批并进入 trace，高风险工具进入 HITL pending-resume。
 - HITL pending-resume：高风险工具会暂停 run，审批通过后 resume，拒绝后不执行。
 - tool timeout / failure handling：工具超时或失败会进入 trace 和 eval，不让 run 直接崩溃。
 - redaction / prompt-injection boundary：进入 LLM/报告前脱敏，并把日志里的 prompt injection 标记为数据。
 - trace JSON 持久化。
+- API server + Trace Viewer：支持发起诊断、查看历史 trace、复盘 tool/LLM/evidence，并演示 HITL approve/reject。
 - 504 场景下的初版 self-correction policy。
 - eval runner：检查 route、tool order、tool status、redaction、prompt injection、evidence keywords、report fields、router token budget。
 
@@ -50,6 +59,7 @@ V3 带来的关键认知是：
 - 高置信：router 有足够明确的信号，可以直接做决策。例如有 trace_id 时走 `trace-diagnosis`。
 - 低置信：输入信息不完整或语义比较模糊，规则层无法稳定判断，需要交给 LLM router adapter 或转为追问。
 - hybrid router：规则和 LLM 结合的路由方式。确定性强的问题先用规则处理，模糊问题再调用 LLM，从而减少 token 消耗。
+- ModelPolicy：按 Agent 执行阶段选择模型档位和预算。`LlmConfig` 管供应商连接，`ModelPolicy` 管 router/report/root-cause 等角色该用什么模型和 token budget。
 
 ## 可选：启用真实 LLM
 
@@ -70,6 +80,44 @@ export LLM_TIMEOUT_MS=15000
 LLM report 输出必须通过 `DiagnosisReportSchema` 校验。API 调用失败、缺少 key 或 schema 校验失败时，会 fallback 到 mock report，并把 `reportGeneration.source=fallback` 写入 trace。
 
 兼容说明：旧的 `LLM_ROUTER_MODE` / `LLM_REPORT_MODE` / `LLM_ROUTER_MODEL` / `LLM_REPORT_MODEL` 仍会被读取，但新配置统一使用 `LLM_MODE`、`LLM_MODEL`、`LLM_TIMEOUT_MS`。
+
+## 可选：配置 ModelPolicy
+
+默认策略：
+
+- router：`small` 档，token budget 1000。
+- report：`standard` 档，token budget 4000。
+- root_cause：`strong` 档，token budget 6000，当前预留给后续根因综合阶段。
+
+可通过环境变量覆盖：
+
+```bash
+export LLM_SMALL_MODEL=gpt-4.1-mini
+export LLM_STANDARD_MODEL=gpt-5.5
+export LLM_STRONG_MODEL=gpt-5.5
+export LLM_ROUTER_TOKEN_BUDGET=1000
+export LLM_REPORT_TOKEN_BUDGET=4000
+```
+
+每次 LLM 调用会写入 `run.llmCalls[]`，包含 `role`、`modelTier`、`model`、`tokenBudget`、`tokenUsage` 和 fallback 信息。eval 会检查实际 token usage 是否超过 policy budget。
+
+## API server / Trace Viewer
+
+启动：
+
+```bash
+npm run server
+```
+
+主要接口：
+
+- `POST /api/diagnose`：发起一次诊断。
+- `GET /api/traces`：查看最近 trace 列表。
+- `GET /api/traces/:runId`：读取单次 run trace。
+- `POST /api/approvals/:approvalId/approve`：批准 pending 高风险工具。
+- `POST /api/approvals/:approvalId/reject`：拒绝 pending 高风险工具。
+
+Trace Viewer 沿用 V2 的双栏控制台风格：左侧是诊断输入和报告，右侧展示 run summary、tool path、LLM calls、evidence 和历史 traces。
 
 ## 工具超时配置
 

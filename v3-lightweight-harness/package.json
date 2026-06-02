@@ -8,6 +8,7 @@
     "diagnose": "npm run build --silent && node dist/cli.js diagnose",
     "dev": "npm run diagnose --",
     "eval": "npm run build --silent && node dist/cli.js eval",
+    "server": "npm run build --silent && node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "hitl-demo": "npm run build --silent && node dist/cli.js hitl-demo"

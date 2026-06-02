@@ -2,6 +2,7 @@
 import { loadLlmConfig, LlmConfig } from "../config/env.js";
 import { RouterResult, WorkflowDecisionSchema } from "../schemas/workflow.js";
 import { sanitizeForLlm } from "../security/llm-safety.js";
+import { resolveModelPolicy } from "./model-policy.js";
 import { buildRouterSystemPrompt } from "./router-prompt.js";
 import { z } from "zod";
 
@@ -15,10 +16,19 @@ function estimateTokens(text: string): number {
 }
 
 export class MockLlmRouterAdapter implements LlmRouterAdapter {
+  constructor(private readonly config: LlmConfig = loadLlmConfig()) {}
+
   async route(userMessage: string): Promise<RouterResult> {
+    // 即使是 mock router，也解析 ModelPolicy，确保 trace/eval 能看到同一套成本策略。
+    const policy = resolveModelPolicy("router", this.config);
     const inputTokens = estimateTokens(userMessage);
     const lowered = userMessage.toLowerCase();
     const appHint = userMessage.includes("订单") || userMessage.includes("下单") ? "order-service" : undefined;
+    const tokenUsage = {
+      inputTokens,
+      outputTokens: 32,
+      totalTokens: inputTokens + 32
+    };
 
     if (lowered.includes("卡住") || lowered.includes("慢") || lowered.includes("超时")) {
       return {
@@ -31,15 +41,26 @@ export class MockLlmRouterAdapter implements LlmRouterAdapter {
         source: "llm",
         confidence: 0.82,
         usedLlm: true,
-        tokenUsage: {
-          inputTokens,
-          outputTokens: 32,
-          totalTokens: inputTokens + 32
+        tokenUsage,
+        llmCall: {
+          role: policy.role,
+          source: "mock",
+          model: policy.model,
+          modelTier: policy.modelTier,
+          tokenBudget: policy.tokenBudget,
+          timeoutMs: policy.timeoutMs,
+          tokenUsage,
+          notes: ["mock llm router", policy.reason]
         },
-        notes: ["mock llm router"]
+        notes: ["mock llm router", `model_policy=${policy.modelTier}:${policy.model}`]
       };
     }
 
+    const fallbackTokenUsage = {
+      inputTokens,
+      outputTokens: 28,
+      totalTokens: inputTokens + 28
+    };
     return {
       decision: {
         problemType: "unknown",
@@ -50,12 +71,18 @@ export class MockLlmRouterAdapter implements LlmRouterAdapter {
       source: "llm",
       confidence: 0.45,
       usedLlm: true,
-      tokenUsage: {
-        inputTokens,
-        outputTokens: 28,
-        totalTokens: inputTokens + 28
+      tokenUsage: fallbackTokenUsage,
+      llmCall: {
+        role: policy.role,
+        source: "mock",
+        model: policy.model,
+        modelTier: policy.modelTier,
+        tokenBudget: policy.tokenBudget,
+        timeoutMs: policy.timeoutMs,
+        tokenUsage: fallbackTokenUsage,
+        notes: ["mock llm router", policy.reason]
       },
-      notes: ["mock llm router"]
+      notes: ["mock llm router", `model_policy=${policy.modelTier}:${policy.model}`]
     };
   }
 }
@@ -103,6 +130,8 @@ export class OpenAiRouterAdapter implements LlmRouterAdapter {
   constructor(private readonly config: LlmConfig = loadLlmConfig()) {}
 
   async route(userMessage: string): Promise<RouterResult> {
+    // Router 的模型选择由 ModelPolicy 决定；adapter 只负责执行和记录结果。
+    const policy = resolveModelPolicy("router", this.config);
     if (!this.config.apiKey) {
       return {
         decision: {
@@ -113,12 +142,22 @@ export class OpenAiRouterAdapter implements LlmRouterAdapter {
         source: "fallback",
         confidence: 0,
         usedLlm: false,
-        notes: ["missing_openai_api_key"]
+        llmCall: {
+          role: policy.role,
+          source: "fallback",
+          model: policy.model,
+          modelTier: policy.modelTier,
+          tokenBudget: policy.tokenBudget,
+          timeoutMs: policy.timeoutMs,
+          error: "missing_openai_api_key",
+          notes: [policy.reason]
+        },
+        notes: ["missing_openai_api_key", `model_policy=${policy.modelTier}:${policy.model}`]
       };
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
+    const timeout = setTimeout(() => controller.abort(), policy.timeoutMs);
     const safeUserMessage = sanitizeForLlm(userMessage);
 
     try {
@@ -131,7 +170,7 @@ export class OpenAiRouterAdapter implements LlmRouterAdapter {
           authorization: `Bearer ${this.config.apiKey}`
         },
         body: JSON.stringify({
-          model: this.config.model,
+          model: policy.model,
           temperature: 0,
           response_format: { type: "json_object" },
           messages: [
@@ -160,19 +199,31 @@ export class OpenAiRouterAdapter implements LlmRouterAdapter {
       const payload = parseRouterPayload(stripJsonFence(content));
       const promptTokens = data.usage?.prompt_tokens ?? 0;
       const completionTokens = data.usage?.completion_tokens ?? 0;
+      const tokenUsage = {
+        inputTokens: promptTokens,
+        outputTokens: completionTokens,
+        totalTokens: data.usage?.total_tokens ?? promptTokens + completionTokens
+      };
 
       return {
         decision: payload.decision,
         source: "llm",
         confidence: payload.confidence,
         usedLlm: true,
-        tokenUsage: {
-          inputTokens: promptTokens,
-          outputTokens: completionTokens,
-          totalTokens: data.usage?.total_tokens ?? promptTokens + completionTokens
+        tokenUsage,
+        llmCall: {
+          role: policy.role,
+          source: "llm",
+          model: policy.model,
+          modelTier: policy.modelTier,
+          tokenBudget: policy.tokenBudget,
+          timeoutMs: policy.timeoutMs,
+          tokenUsage,
+          notes: [policy.reason]
         },
         notes: [
-          `openai-compatible router model=${this.config.model}`,
+          `openai-compatible router model=${policy.model}`,
+          `model_policy=${policy.modelTier}:${policy.model}`,
           ...safeUserMessage.redactedTypes.map((type) => `redacted:${type}`),
           ...safeUserMessage.promptInjectionFindings.map((finding) => `prompt_injection:${finding.pattern}`)
         ]
@@ -193,7 +244,22 @@ export class OpenAiRouterAdapter implements LlmRouterAdapter {
           outputTokens: 0,
           totalTokens: 0
         },
-        notes: ["llm_router_error"]
+        llmCall: {
+          role: policy.role,
+          source: "fallback",
+          model: policy.model,
+          modelTier: policy.modelTier,
+          tokenBudget: policy.tokenBudget,
+          timeoutMs: policy.timeoutMs,
+          tokenUsage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0
+          },
+          error: error instanceof Error ? error.message : String(error),
+          notes: [policy.reason]
+        },
+        notes: ["llm_router_error", `model_policy=${policy.modelTier}:${policy.model}`]
       };
     } finally {
       clearTimeout(timeout);

@@ -145,6 +145,7 @@ export async function routeWorkflow(
     confidence: llmResult.confidence,
     usedLlm: llmResult.usedLlm,
     tokenUsage: llmResult.tokenUsage,
+    llmCall: llmResult.llmCall,
     notes: [...(llmResult.notes ?? []), "fallback_to_clarification"]
   };
 }

@@ -48,13 +48,18 @@ export class HarnessRunner {
       userMessage,
       approvals: [],
       evidence: [],
-      toolTraces: []
+      toolTraces: [],
+      llmCalls: []
     };
     const evidence = new EvidenceStore();
 
     // Runner 是控制中心：先由 router 选 workflow，再由 workflow 受控调用工具。
     state.router = await routeWorkflow(userMessage);
     state.decision = state.router.decision;
+    // llmCalls[] 是跨阶段的 LLM 成本视图；router/report 各自 trace 仍保留在原字段里。
+    if (state.router.llmCall) {
+      state.llmCalls.push(state.router.llmCall);
+    }
     evidence.add({
       source: "router",
       kind: "system",
@@ -163,6 +168,10 @@ export class HarnessRunner {
     });
     state.finalReport = result.report;
     state.reportGeneration = result.trace;
+    // 汇总 report LLM 调用，便于 eval 按统一口径检查 token budget。
+    if (result.trace.llmCall) {
+      state.llmCalls.push(result.trace.llmCall);
+    }
   }
 
   private async invokeTool(

@@ -30,6 +30,9 @@ describe("routeWorkflow", () => {
     expect(result.decision.route).toBe("performance");
     expect(result.usedLlm).toBe(true);
     expect(result.tokenUsage?.totalTokens).toBeGreaterThan(0);
+    expect(result.llmCall?.role).toBe("router");
+    expect(result.llmCall?.modelTier).toBe("small");
+    expect(result.llmCall?.tokenBudget).toBe(1000);
   });
 
   it("falls back to clarification when LLM router is low confidence", async () => {

@@ -1,5 +1,6 @@
 // Workflow schema：定义 router 可输出的问题类型、workflow route 和置信度信息。
 import { z } from "zod";
+import { LlmCallTraceSchema, TokenUsageSchema } from "./llm.js";
 
 export const ProblemTypeSchema = z.enum(["interface_error", "performance", "unknown"]);
 export const WorkflowRouteSchema = z.enum([
@@ -23,13 +24,8 @@ export const RouterResultSchema = z.object({
   source: z.enum(["heuristic", "llm", "fallback"]),
   confidence: z.number().min(0).max(1),
   usedLlm: z.boolean(),
-  tokenUsage: z
-    .object({
-      inputTokens: z.number(),
-      outputTokens: z.number(),
-      totalTokens: z.number()
-    })
-    .optional(),
+  tokenUsage: TokenUsageSchema.optional(),
+  llmCall: LlmCallTraceSchema.optional(),
   notes: z.array(z.string()).default([])
 });
 

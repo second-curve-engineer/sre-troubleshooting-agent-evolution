@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SRE 故障排查 Agent · V3</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="workspace" aria-label="故障排查工作区">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">SRE Troubleshooting Agent · V3</p>
+            <h1>Agent Trace 控制台</h1>
+          </div>
+          <div class="status">
+            <span class="dot"></span>
+            <span id="modeLabel">Harness mode</span>
+          </div>
+        </header>
+
+        <section class="chat" id="chatLog" aria-live="polite">
+          <article class="message assistant">
+            <div class="avatar">V3</div>
+            <div class="bubble intro">
+              <p>输入故障描述后，页面会展示本次 run 的 router、workflow、tool trace、LLM 调用、审批状态和最终报告。</p>
+            </div>
+          </article>
+        </section>
+
+        <form class="composer" id="diagnoseForm">
+          <textarea
+            id="messageInput"
+            rows="3"
+            placeholder="例如：order-service 下单接口从 10:30 开始大量 504，帮我排查。"
+          ></textarea>
+          <div class="composerActions">
+            <label class="toggle">
+              <input type="checkbox" id="strictMode" />
+              <span>Strict HITL</span>
+            </label>
+            <button type="button" id="exampleBtn">示例</button>
+            <button type="submit" id="sendBtn">诊断</button>
+          </div>
+        </form>
+      </section>
+
+      <aside class="inspector" aria-label="Trace 复盘">
+        <section class="panel">
+          <div class="panelHeader">
+            <h2>Run Summary</h2>
+            <span class="badge" id="runStatus">idle</span>
+          </div>
+          <div class="summaryGrid" id="summaryGrid">
+            <div class="muted">等待诊断或选择历史 trace。</div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHeader">
+            <h2>Tool Path</h2>
+            <span class="badge" id="toolCount">0</span>
+          </div>
+          <ol class="timeline" id="toolTrace">
+            <li class="muted">暂无工具调用</li>
+          </ol>
+        </section>
+
+        <section class="panel">
+          <div class="panelHeader">
+            <h2>LLM Calls</h2>
+            <span class="badge" id="llmCount">0</span>
+          </div>
+          <div class="llmList" id="llmCalls">
+            <div class="muted">暂无 LLM 调用</div>
+          </div>
+        </section>
+
+        <section class="panel light">
+          <div class="panelHeader">
+            <h2>Evidence</h2>
+            <span class="badge" id="evidenceCount">0</span>
+          </div>
+          <ul class="evidence" id="evidenceList">
+            <li class="muted">暂无证据</li>
+          </ul>
+        </section>
+
+        <section class="panel light">
+          <div class="panelHeader">
+            <h2>Recent Traces</h2>
+            <button class="ghost" id="refreshBtn" type="button">刷新</button>
+          </div>
+          <div class="traceList" id="traceList">
+            <div class="muted">正在加载…</div>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

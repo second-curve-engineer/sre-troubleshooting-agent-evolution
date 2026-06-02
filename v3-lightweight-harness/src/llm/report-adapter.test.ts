@@ -35,6 +35,9 @@ describe("OpenAiDiagnosisGenerator", () => {
 
     expect(result.trace.source).toBe("fallback");
     expect(result.trace.error).toContain("OPENAI_API_KEY");
+    expect(result.trace.llmCall?.role).toBe("report");
+    expect(result.trace.llmCall?.modelTier).toBe("standard");
+    expect(result.trace.llmCall?.tokenBudget).toBe(4000);
     expect(result.report.problemAnalysis).toContain("504");
     expect(result.report.confidence).toBe("medium");
   });

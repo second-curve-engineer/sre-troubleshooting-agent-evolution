@@ -98,6 +98,21 @@ export function evaluateCase(args: {
     });
   }
 
+  // 这是 eval 回归检查，不是运行时熔断；用于发现某个 role 的模型策略开始超预算。
+  const overBudgetCalls = args.state.llmCalls.filter(
+    (call) => call.tokenUsage && call.tokenUsage.totalTokens > call.tokenBudget
+  );
+  checks.push({
+    name: "llm_policy_budget",
+    passed: overBudgetCalls.length === 0,
+    message:
+      overBudgetCalls.length === 0
+        ? `all ${args.state.llmCalls.length} llm calls within policy budget`
+        : overBudgetCalls
+            .map((call) => `${call.role}:${call.tokenUsage?.totalTokens ?? 0}/${call.tokenBudget}`)
+            .join(", ")
+  });
+
   if (args.testCase.expectedApprovals) {
     for (const expected of args.testCase.expectedApprovals) {
       const matched = args.state.approvals.some(

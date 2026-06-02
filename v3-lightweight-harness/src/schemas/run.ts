@@ -4,6 +4,7 @@ import { AppInfoSchema } from "./app.js";
 import { HumanApprovalRequestSchema } from "./approval.js";
 import { DiagnosisReportSchema } from "./diagnosis.js";
 import { EvidenceItemSchema } from "./evidence.js";
+import { LlmCallTraceSchema, ModelTierSchema, TokenUsageSchema } from "./llm.js";
 import { ToolTraceSchema } from "./tool.js";
 import { RouterResultSchema, WorkflowDecisionSchema } from "./workflow.js";
 
@@ -11,14 +12,13 @@ export const RunStatusSchema = z.enum(["running", "waiting_approval", "completed
 
 export const ReportGenerationTraceSchema = z.object({
   source: z.enum(["mock", "llm", "fallback"]),
+  role: z.literal("report").default("report"),
   model: z.string().optional(),
-  tokenUsage: z
-    .object({
-      inputTokens: z.number(),
-      outputTokens: z.number(),
-      totalTokens: z.number()
-    })
-    .optional(),
+  modelTier: ModelTierSchema.optional(),
+  tokenBudget: z.number().optional(),
+  timeoutMs: z.number().optional(),
+  tokenUsage: TokenUsageSchema.optional(),
+  llmCall: LlmCallTraceSchema.optional(),
   error: z.string().optional(),
   notes: z.array(z.string()).default([])
 });
@@ -36,6 +36,7 @@ export const RunStateSchema = z.object({
   resumeFromStepId: z.string().optional(),
   evidence: z.array(EvidenceItemSchema).default([]),
   toolTraces: z.array(ToolTraceSchema).default([]),
+  llmCalls: z.array(LlmCallTraceSchema).default([]),
   reportGeneration: ReportGenerationTraceSchema.optional(),
   finalReport: DiagnosisReportSchema.optional()
 });
