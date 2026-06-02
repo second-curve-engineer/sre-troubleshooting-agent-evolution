@@ -32,32 +32,32 @@
 
   <div class="hero">
     <div class="hero-eyebrow">线上故障排查 Agent · 演示平台</div>
-    <h1>把 SRE 第一轮排障<br>变成可控的工程系统</h1>
+    <h1>把 SRE 第一轮故障排除<br>变成可控的工程系统</h1>
     <p class="hero-sub">
       从用户描述故障，到根因分析报告，全程可观测、可评测、可复盘。
-      不是聊天机器人，而是 Router → Workflow → ToolRegistry → Evidence → Trace 的工程化 Agent。
+      不是聊天机器人，而是 Router → Workflow → ToolRegistry → Evidence → Trace → Eval 的工程化 Agent。
     </p>
     <div class="hero-actions">
       <button class="btn btn-primary" data-goto="demo">▶  立即体验 Demo</button>
       <button class="btn btn-outline" data-goto="arch">查看系统架构</button>
     </div>
     <div class="hero-stats">
+      <a class="stat-item stat-link" href="#arch" data-goto="arch">
+        <div class="stat-num">4</div>
+        <div class="stat-label">Workflow Routes</div>
+      </a>
+      <a class="stat-item stat-link" href="#arch" data-goto="arch">
+        <div class="stat-num">6</div>
+        <div class="stat-label">Tools</div>
+      </a>
       <div class="stat-item">
         <div class="stat-num">10/10</div>
         <div class="stat-label">Eval Pass</div>
       </div>
-      <div class="stat-item">
-        <div class="stat-num">4</div>
-        <div class="stat-label">Workflow Routes</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-num">6</div>
-        <div class="stat-label">Mock Tools</div>
-      </div>
-      <div class="stat-item">
+      <a class="stat-item stat-link" href="#evo" data-goto="evo">
         <div class="stat-num">V1→V3</div>
         <div class="stat-label">三轮演进</div>
-      </div>
+      </a>
     </div>
   </div>
 
@@ -73,6 +73,11 @@
         <div class="feature-icon">🗂</div>
         <h3>Workflow-First 控制</h3>
         <p>每条 route 对应显式 workflow，每个 step 声明 allowedTools 白名单。关键路径由代码控制，LLM 是可替换的能力接口。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🧰</div>
+        <h3>Tool Registry</h3>
+        <p>统一注册 resolve_app、日志查询、慢 SQL、代码问答、restart_service 等工具，并绑定 schema、allowedTools 和 risk level，避免 Agent 乱调用。</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon">🔁</div>
@@ -118,7 +123,7 @@
 
   <p class="section-title">系统设计</p>
   <h2>控制层架构</h2>
-  <p class="sub">LLM 作为可替换能力接入，关键路径由代码显式控制 · 点击模块查看实现细节</p>
+  <p class="sub">LLM 作为可替换能力接入，关键路径由代码显式控制 · 点击左侧卡片内的彩色标签，可展示实现详情</p>
 
   <div class="arch-layout">
     <!-- 左：流程图 -->
@@ -218,7 +223,10 @@
     <!-- 右：详情面板 -->
     <div class="arch-detail-panel" id="archDetailPanel">
       <div class="arch-detail-empty" id="archDetailEmpty">
-        <div class="arch-detail-hint">← 点击左侧任意模块<br>查看实现细节</div>
+        <div class="arch-detail-hint">
+          ← 点击左侧卡片内的彩色标签，展示详情<br>
+          例如 <span>heuristic</span>、<span class="workflow">performance</span>、<span class="risk">restart_service</span>
+        </div>
       </div>
       <div class="arch-detail-content" id="archDetailContent" style="display:none">
         <div class="arch-detail-header">

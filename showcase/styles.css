@@ -202,6 +202,27 @@ nav {
   text-align: center;
 }
 
+.stat-link {
+  color: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.stat-link * {
+  text-decoration: none;
+}
+
+.stat-link:hover .stat-num,
+.stat-link:focus-visible .stat-num {
+  color: #58a6ff;
+}
+
+.stat-link:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 8px;
+  border-radius: 8px;
+}
+
 .stat-num {
   font-size: 28px;
   font-weight: 800;
@@ -295,9 +316,13 @@ nav {
 /* clickable tag */
 .arch-tag.clickable {
   cursor: pointer;
-  transition: opacity 0.15s, transform 0.1s;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s, opacity 0.15s;
 }
-.arch-tag.clickable:hover { opacity: 0.8; }
+.arch-tag.clickable:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 1px currentColor;
+}
 .arch-tag.clickable.active {
   outline: 2px solid currentColor;
   outline-offset: 2px;
@@ -327,6 +352,29 @@ nav {
   color: var(--ink3);
   font-size: 13px;
   line-height: 1.8;
+}
+
+.arch-detail-hint span {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.arch-detail-hint span.risk {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.arch-detail-hint span.workflow {
+  background: var(--green-soft);
+  color: var(--green);
 }
 
 .arch-detail-content {
@@ -490,6 +538,16 @@ nav {
   margin-top: 10px;
 }
 
+.arch-box .tags::before {
+  content: "点击标签查看细节";
+  flex-basis: 100%;
+  color: var(--ink3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .arch-tag {
   padding: 2px 8px;
   border-radius: 6px;
@@ -498,6 +556,11 @@ nav {
   background: var(--bg3);
   color: var(--ink2);
   font-family: var(--font-mono);
+}
+
+.arch-tag.clickable {
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 
 .arch-tag.green { background: var(--green-soft); color: var(--green); }
