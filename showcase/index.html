@@ -21,6 +21,7 @@
     <li><a href="#home"  data-section="home">首页</a></li>
     <li><a href="#arch"  data-section="arch">系统架构</a></li>
     <li><a href="#demo"  data-section="demo">演示 Demo</a></li>
+    <li><a href="#eval"  data-section="eval">Eval</a></li>
     <li><a href="#evo"   data-section="evo">演进历程</a></li>
   </ul>
 </nav>
@@ -50,10 +51,10 @@
         <div class="stat-num">6</div>
         <div class="stat-label">Tools</div>
       </a>
-      <div class="stat-item">
+      <a class="stat-item stat-link" href="#eval" data-goto="eval">
         <div class="stat-num">10/10</div>
         <div class="stat-label">Eval Pass</div>
-      </div>
+      </a>
       <a class="stat-item stat-link" href="#evo" data-goto="evo">
         <div class="stat-num">V1→V3</div>
         <div class="stat-label">三轮演进</div>
@@ -326,6 +327,52 @@
 </div>
 </div>
 <!-- /demo -->
+
+<!-- ══════════════════════════════════════════════════════════
+     EVAL
+═══════════════════════════════════════════════════════════ -->
+<div id="section-eval" class="page-section">
+<div class="eval-page">
+
+  <p class="section-title">Eval Coverage</p>
+  <h2>10 个回归 Case 覆盖什么</h2>
+  <p class="sub">
+    这组 eval 将 Agent 的关键风险拆成可回归检查：
+    <strong>诊断路径、路由成本、失败降级、安全边界、高风险控制</strong>。
+  </p>
+
+  <div class="eval-summary">
+    <div class="eval-summary-card">
+      <div class="eval-summary-num">10/10</div>
+      <div class="eval-summary-label">Eval Pass</div>
+    </div>
+    <div class="eval-summary-card">
+      <div class="eval-summary-num">5</div>
+      <div class="eval-summary-label">Coverage Groups</div>
+    </div>
+    <div class="eval-summary-card">
+      <div class="eval-summary-num">4</div>
+      <div class="eval-summary-label">Route Checks</div>
+    </div>
+    <div class="eval-summary-card">
+      <div class="eval-summary-num">6</div>
+      <div class="eval-summary-label">Tool Checks</div>
+    </div>
+  </div>
+
+  <div class="eval-principle">
+    <div>
+      <h3>Eval 检查维度</h3>
+      <p>每个 case 都从 trace 中抽取 route、tool order、evidence keywords、confidence、LLM token budget、tool status、approval status 做断言。</p>
+    </div>
+    <code>route · tool order · evidence · confidence · token budget · approval</code>
+  </div>
+
+  <div class="eval-groups" id="evalGroups"></div>
+
+</div>
+</div>
+<!-- /eval -->
 
 <!-- ══════════════════════════════════════════════════════════
      EVOLUTION
