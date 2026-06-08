@@ -93,17 +93,21 @@ export async function queryLogsByTraceId(input: {
   }
 
   const errors = logs.filter((log) => log["log.level"] === "ERROR" || log["exception.type"]);
+  const firstErrorApp = asString(errors[0]?.app_id);
+  const firstException = asString(errors[0]?.["exception.type"]);
+  const exceptionSuffix =
+    firstException ? `，首个异常 ${firstErrorApp} ${firstException}` : "";
   return {
     status: "ok",
-    summary: `trace_id ${input.traceId} 查到 ${logs.length} 条链路日志`,
+    summary: `trace_id ${input.traceId} 查到 ${logs.length} 条链路日志${exceptionSuffix}`,
     data: { logs, errors },
     outputSummary: {
       traceId: input.traceId,
       logCount: logs.length,
       apps: payload?.result?.data?.apps ?? [],
       errorCount: errors.length,
-      firstErrorApp: errors[0]?.app_id,
-      firstException: errors[0]?.["exception.type"]
+      firstErrorApp,
+      firstException
     },
     detectedKeywords: detectKeywords(logs)
   };

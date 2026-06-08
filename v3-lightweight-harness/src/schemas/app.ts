@@ -6,7 +6,9 @@ export const AppInfoSchema = z.object({
   systemName: z.string(),
   appName: z.string(),
   realName: z.string(),
-  codebasePath: z.string(),
+  // 源码根目录路径。
+  // 生产环境填真实路径；不填时 askCodebase 降级为 mock JSON 答案。
+  codebasePath: z.string().optional(),
   aliases: z.array(z.string()).default([])
 });
 

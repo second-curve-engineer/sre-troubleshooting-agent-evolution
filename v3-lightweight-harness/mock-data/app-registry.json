@@ -4,7 +4,7 @@
     "systemName": "订单系统",
     "appName": "order-service",
     "realName": "order-service",
-    "codebasePath": "order-service",
+    "codebasePath": "mock-data/source/order-service",
     "aliases": ["order", "订单", "订单服务", "下单服务"]
   },
   {
@@ -12,7 +12,7 @@
     "systemName": "库存系统",
     "appName": "inventory-service",
     "realName": "inventory-service",
-    "codebasePath": "inventory-service",
+    "codebasePath": "mock-data/source/inventory-service",
     "aliases": ["inventory", "库存", "库存服务"]
   }
 ]

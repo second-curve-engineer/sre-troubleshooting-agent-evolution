@@ -50,8 +50,10 @@ const handlers: Record<ToolName, ToolHandler> = {
     }),
   ask_codebase: (input) =>
     askCodebase({
-      codebasePath: String(input.codebasePath ?? ""),
-      question: String(input.question ?? "")
+      appId: String(input.appId ?? ""),
+      codebasePath: input.codebasePath ? String(input.codebasePath) : undefined,
+      question: String(input.question ?? ""),
+      stackTrace: input.stackTrace ? String(input.stackTrace) : undefined
     }),
   restart_service: async (input) => ({
     status: "ok",
