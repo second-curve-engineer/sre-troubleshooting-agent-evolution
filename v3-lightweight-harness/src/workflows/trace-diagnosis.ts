@@ -15,10 +15,14 @@ export async function runTraceDiagnosis(context: WorkflowContext): Promise<void>
     ["query_logs_by_trace_id"]
   );
 
+  const traceSummary = await context.evidenceSummarizer.summarize({
+    toolName: "query_logs_by_trace_id",
+    toolResult: traceResult
+  });
   context.evidence.add({
     source: "query_logs_by_trace_id",
     kind: "trace",
-    summary: `trace ${traceId}: ${traceResult.summary}; 首次异常=${String((traceResult.outputSummary ?? {}).firstException ?? "unknown")}`,
+    summary: `[trace ${traceId}] ${traceSummary}`,
     confidence: traceResult.status === "ok" ? "high" : "low",
     rawRef: traceId,
     usedInFinalReport: true

@@ -4,6 +4,8 @@ import { z } from "zod";
 export const LlmRoleSchema = z.enum(["router", "evidence_summarizer", "root_cause", "report", "judge"]);
 export const ModelTierSchema = z.enum(["rule", "small", "standard", "strong"]);
 export const LlmCallSourceSchema = z.enum(["mock", "llm", "fallback", "skipped"]);
+// OpenInference span kind — 保持与 Phoenix/Arize 可观测性平台的语义兼容。
+export const LlmSpanKindSchema = z.literal("LLM");
 
 export const TokenUsageSchema = z.object({
   inputTokens: z.number(),
@@ -11,8 +13,17 @@ export const TokenUsageSchema = z.object({
   totalTokens: z.number()
 });
 
-// 单次 LLM 调用的 trace。它记录“为什么这个阶段用这个模型、花了多少预算、是否降级”。
+// 单次 LLM 调用的 trace。它记录”为什么这个阶段用这个模型、花了多少预算、是否降级”。
 export const LlmCallTraceSchema = z.object({
+  // -- OpenTelemetry / OpenInference 兼容字段 --
+  // spanId 全局唯一，parentSpanId 指向触发本次调用的 Agent Span（agentSpanId）。
+  spanId: z.string().optional(),
+  parentSpanId: z.string().optional(),
+  // span 开始时间，ISO 8601，与 ToolTrace 对齐后可按时间线重建完整执行顺序。
+  startTime: z.string().optional(),
+  // OpenInference span kind：LLM Span 固定为 "LLM"，便于接入 Phoenix 等平台。
+  spanKind: LlmSpanKindSchema.optional(),
+  // -- SRE 语义扩展字段（作为 OTel attributes）--
   // 本次 LLM 调用所属的 Agent 阶段，例如 router、report、root_cause。
   role: LlmRoleSchema,
   // 调用来源：mock、本次真实 LLM 调用、fallback，或后续预留的 skipped。
@@ -36,5 +47,6 @@ export const LlmCallTraceSchema = z.object({
 export type LlmRole = z.infer<typeof LlmRoleSchema>;
 export type ModelTier = z.infer<typeof ModelTierSchema>;
 export type LlmCallSource = z.infer<typeof LlmCallSourceSchema>;
+export type LlmSpanKind = z.infer<typeof LlmSpanKindSchema>;
 export type TokenUsage = z.infer<typeof TokenUsageSchema>;
 export type LlmCallTrace = z.infer<typeof LlmCallTraceSchema>;

@@ -53,7 +53,7 @@
         <div class="stat-label">Tools</div>
       </a>
       <a class="stat-item stat-link" href="#eval" data-goto="eval">
-        <div class="stat-num">10/10</div>
+        <div class="stat-num">12/12</div>
         <div class="stat-label">Eval Pass</div>
       </a>
       <a class="stat-item stat-link" href="#evo" data-goto="evo">
@@ -83,8 +83,8 @@
       </div>
       <div class="feature-card">
         <div class="feature-icon">🔁</div>
-        <h3>Self-Correction Policy</h3>
-        <p>工具返回 too_many_results 时，Policy 自动收窄查询条件重试。纠偏逻辑由结构化状态驱动，可复现、可限制、可 eval。</p>
+        <h3>Agent Loop &amp; Self-Correction</h3>
+        <p>工具执行结果反馈到 Policy，Policy 决定继续、收窄重试还是终止。Loop 有三种明确退出条件：completed（满足）、max_iterations（超限）、tool_error（出错），全程写入 Trace 可回溯。</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon">🧾</div>
@@ -143,11 +143,11 @@
         <div class="arch-label">路由</div>
         <div class="arch-box">
           <strong>Hybrid Router</strong>
-          <p>先 heuristic 判断确定性信号，高置信不调 LLM；低置信交给 LLM Router，输出经 zod schema 校验。</p>
+          <p>先用 Rule 处理确定性信号，高置信不调 LLM；低置信交给 LLM Router，输出经 zod schema 校验。</p>
           <div class="tags">
-            <span class="arch-tag blue clickable" data-key="heuristic">heuristic</span>
-            <span class="arch-tag blue clickable" data-key="llm-fallback">LLM fallback</span>
-            <span class="arch-tag blue clickable" data-key="zod-validate">zod validate</span>
+            <span class="arch-tag blue clickable" data-key="heuristic">Rule</span>
+            <span class="arch-tag blue clickable" data-key="llm-fallback">LLM</span>
+            <span class="arch-tag clickable" data-key="llm-fallback-clarification">Fallback</span>
           </div>
         </div>
       </div>
@@ -190,7 +190,6 @@
           <div class="tags">
             <span class="arch-tag purple clickable" data-key="redaction">redaction</span>
             <span class="arch-tag purple clickable" data-key="injection-guard">injection guard</span>
-            <span class="arch-tag purple clickable" data-key="safetyFlags">safetyFlags</span>
           </div>
         </div>
       </div>
@@ -211,10 +210,10 @@
         <div class="arch-label">可观测</div>
         <div class="arch-box">
           <strong>TraceStore + Eval Runner</strong>
-          <p>每次 run 保存完整 JSON trace。Eval Runner 对 10 个 case 做回归检查。</p>
+          <p>每次 run 保存完整 JSON trace。Eval Runner 对核心路径做回归检查。</p>
           <div class="tags">
             <span class="arch-tag yellow clickable" data-key="json-trace">JSON trace</span>
-            <span class="arch-tag yellow clickable" data-key="eval-runner">eval 10/10</span>
+            <span class="arch-tag yellow clickable" data-key="eval-runner">eval</span>
             <span class="arch-tag yellow clickable" data-key="replay">replay</span>
           </div>
         </div>
@@ -262,7 +261,7 @@
       <div class="terminal-dots">
         <span></span><span></span><span></span>
       </div>
-      <div class="terminal-title">sre-agent · harness v3</div>
+      <div class="terminal-title">troubleshooting-agent · harness v3</div>
     </div>
     <div class="terminal-body" id="termBody">
       <span class="term-cursor"></span>
@@ -283,21 +282,46 @@
       </div>
       <div class="panel-body">
         <div class="summary-grid">
-          <div>
-            <div class="metric-label">Route</div>
+          <div class="metric-tip-wrap">
+            <div class="metric-label">
+              Workflow
+              <span class="tip-icon">ⓘ</span>
+              <div class="metric-tip-box">
+                <div class="tip-row"><span class="tip-tag rule">trace-diagnosis</span>有 trace_id，精确查链路日志</div>
+                <div class="tip-row"><span class="tip-tag llm">performance</span>504 / timeout，走性能排查路径</div>
+                <div class="tip-row"><span class="tip-tag llm">condition-log</span>有错误码但无 trace_id，条件查日志</div>
+                <div class="tip-row"><span class="tip-tag fallback">clarification</span>信息不足，追问用户补充上下文</div>
+              </div>
+            </div>
             <div class="metric-value" id="infoRoute">-</div>
           </div>
           <div>
             <div class="metric-label">Problem</div>
             <div class="metric-value" id="infoProblem">-</div>
           </div>
-          <div>
-            <div class="metric-label">Router</div>
+          <div class="metric-tip-wrap">
+            <div class="metric-label">
+              Router
+              <span class="tip-icon">ⓘ</span>
+              <div class="metric-tip-box">
+                <div class="tip-row"><span class="tip-tag rule">Rule</span>启发式规则直接路由，高置信，不消耗 LLM token</div>
+                <div class="tip-row"><span class="tip-tag llm">LLM</span>输入模糊，调用 LLM 判断路由方向</div>
+                <div class="tip-row"><span class="tip-tag fallback">Fallback</span>LLM 置信不足，降级到追问 workflow</div>
+              </div>
+            </div>
             <div class="metric-value" id="infoRouter">-</div>
           </div>
-          <div>
-            <div class="metric-label">LLM Calls</div>
-            <div class="metric-value" id="infoLlm">0</div>
+          <div class="metric-tip-wrap">
+            <div class="metric-label">
+              Confidence
+              <span class="tip-icon">ⓘ</span>
+              <div class="metric-tip-box tip-box-right">
+                <div class="tip-row"><span class="tip-tag rule">≥ 0.85</span>高置信，Rule 直接路由，不调 LLM</div>
+                <div class="tip-row"><span class="tip-tag llm">0.45–0.85</span>中置信，交给 LLM Router 判断</div>
+                <div class="tip-row"><span class="tip-tag fallback">&lt; 0.45</span>低置信，LLM 也判断不了，降级追问</div>
+              </div>
+            </div>
+            <div class="metric-value" id="infoLlm">-</div>
           </div>
         </div>
       </div>
@@ -336,19 +360,19 @@
 <div class="eval-page">
 
   <p class="section-title">Eval Coverage</p>
-  <h2>10 个回归 Case 覆盖什么</h2>
+  <h2>12 个回归 Case 覆盖什么</h2>
   <p class="sub">
     这组 eval 将 Agent 的关键风险拆成可回归检查：
-    <strong>诊断路径、路由成本、失败降级、安全边界、高风险控制</strong>。
+    <strong>诊断路径、路由成本、Agent Loop、失败降级、安全边界、高风险控制</strong>。
   </p>
 
   <div class="eval-summary">
     <div class="eval-summary-card">
-      <div class="eval-summary-num">10/10</div>
+      <div class="eval-summary-num">12/12</div>
       <div class="eval-summary-label">Eval Pass</div>
     </div>
     <div class="eval-summary-card">
-      <div class="eval-summary-num">5</div>
+      <div class="eval-summary-num">6</div>
       <div class="eval-summary-label">Coverage Groups</div>
     </div>
     <div class="eval-summary-card">
@@ -430,10 +454,11 @@
       <ul class="evo-points">
         <li>Hybrid Router：heuristic 优先，低置信才调 LLM，输出经 zod 校验</li>
         <li>Workflow 显式声明 allowedTools，ToolRegistry 拒绝白名单外调用</li>
-        <li>Self-Correction Policy：too_many_results → 自动收窄重试，可复现可 eval</li>
+        <li>Agent Loop：显式三种终止条件（completed / max_iterations / tool_error），终止原因写入 Trace</li>
+        <li>Self-Correction Policy：工具返回 too_many_results 时在 loop 内收窄重试，可复现可 eval</li>
         <li>HITL Pending-Resume：高风险工具进入 waiting_approval，approve/reject 写入 trace</li>
         <li>Redaction + Prompt Injection Guard：安全边界由代码保证</li>
-        <li>Eval Runner：10 个回归 case，覆盖核心路径 + 失败路径 + 安全边界 + 高风险工具控制</li>
+        <li>Eval Runner：12 个回归 case，覆盖核心路径 + 失败路径 + Agent Loop + 安全边界 + 高风险工具控制</li>
       </ul>
       <div class="evo-why">核心认知：Agent 的价值不在于"调了 LLM"，而在于把不确定的排障流程变成可控、可观测、可评测的工程系统。</div>
     </div>

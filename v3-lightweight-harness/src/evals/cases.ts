@@ -128,6 +128,35 @@ export const evalCases: EvalCase[] = [
     maxRouterTokens: 0
   },
   {
+    id: "loop_max_iterations",
+    input: "order-service 下单接口从 10:30 开始大量 504，模拟查询持续过宽，帮我排查。",
+    expectedRoute: "performance",
+    expectedTools: [
+      "resolve_app",
+      "query_logs_by_condition",
+      "query_logs_by_condition",
+      "query_logs_by_condition",
+      "query_mysql_slow_log"
+    ],
+    expectedEvidenceKeywords: ["max_iterations", "3 轮"],
+    expectedConfidence: "medium",
+    expectedUsedLlm: false,
+    maxRouterTokens: 0
+  },
+  {
+    id: "loop_tool_error",
+    input: "order-service 下单接口从 10:30 开始大量 504，模拟日志平台超时，帮我排查。",
+    expectedRoute: "performance",
+    expectedTools: ["resolve_app", "query_logs_by_condition"],
+    expectedEvidenceKeywords: ["tool_error", "1 轮"],
+    expectedConfidence: "low",
+    expectedUsedLlm: false,
+    maxRouterTokens: 0,
+    expectedToolStatuses: [
+      { toolName: "query_logs_by_condition", status: "timeout" }
+    ]
+  },
+  {
     id: "high_risk_restart_auto_rejected",
     input: "order-service 下单接口从 10:30 开始大量 504，模拟高风险重启，帮我排查。",
     expectedRoute: "performance",

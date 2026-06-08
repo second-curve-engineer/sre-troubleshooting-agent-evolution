@@ -8,6 +8,7 @@ import { sanitizeForLlm } from "../security/llm-safety.js";
 import { resolveModelPolicy, ResolvedModelPolicy } from "./model-policy.js";
 import { generateMockDiagnosis } from "./mock-llm.js";
 import { buildReportSystemPrompt, buildReportUserPrompt } from "./report-prompt.js";
+import { OpenAiClient } from "./openai-client.js";
 
 export type DiagnosisGeneratorInput = {
   userMessage: string;
@@ -22,19 +23,6 @@ export type DiagnosisGeneratorResult = {
 
 export type DiagnosisGenerator = {
   generate(input: DiagnosisGeneratorInput): Promise<DiagnosisGeneratorResult>;
-};
-
-type ChatCompletionResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string;
-    };
-  }>;
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-  };
 };
 
 function stripJsonFence(content: string): string {
@@ -99,7 +87,11 @@ export class MockDiagnosisGenerator implements DiagnosisGenerator {
 }
 
 export class OpenAiDiagnosisGenerator implements DiagnosisGenerator {
-  constructor(private readonly config: LlmConfig = loadLlmConfig()) {}
+  private readonly client: OpenAiClient;
+
+  constructor(private readonly config: LlmConfig = loadLlmConfig()) {
+    this.client = new OpenAiClient(config.baseUrl, config.apiKey ?? "");
+  }
 
   async generate(input: DiagnosisGeneratorInput): Promise<DiagnosisGeneratorResult> {
     // Report 的模型档位、预算和超时由 ModelPolicy 决定，不在 adapter 中写死。
@@ -117,8 +109,6 @@ export class OpenAiDiagnosisGenerator implements DiagnosisGenerator {
       });
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), policy.timeoutMs);
     const safeUserPrompt = sanitizeForLlm(
       buildReportUserPrompt({
         userMessage: input.userMessage,
@@ -128,49 +118,17 @@ export class OpenAiDiagnosisGenerator implements DiagnosisGenerator {
     );
 
     try {
-      const response = await fetch(`${this.config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${this.config.apiKey}`
-        },
-        body: JSON.stringify({
-          model: policy.model,
-          temperature: 0,
-          response_format: { type: "json_object" },
-          messages: [
-            {
-              role: "system",
-              content: buildReportSystemPrompt()
-            },
-            {
-              role: "user",
-              content: safeUserPrompt.text
-            }
-          ]
-        })
+      const { content, tokenUsage } = await this.client.complete({
+        model: policy.model,
+        timeoutMs: policy.timeoutMs,
+        responseFormat: { type: "json_object" },
+        messages: [
+          { role: "system", content: buildReportSystemPrompt() },
+          { role: "user", content: safeUserPrompt.text }
+        ]
       });
 
-      const data = (await response.json()) as ChatCompletionResponse & { error?: { message?: string } };
-      if (!response.ok) {
-        throw new Error(data.error?.message ?? `LLM report HTTP ${response.status}`);
-      }
-
-      const content = data.choices?.[0]?.message?.content;
-      if (!content) {
-        throw new Error("LLM report returned empty content");
-      }
-
       const report = DiagnosisReportSchema.parse(JSON.parse(stripJsonFence(content)));
-      const promptTokens = data.usage?.prompt_tokens ?? 0;
-      const completionTokens = data.usage?.completion_tokens ?? 0;
-      const tokenUsage = {
-        inputTokens: promptTokens,
-        outputTokens: completionTokens,
-        totalTokens: data.usage?.total_tokens ?? promptTokens + completionTokens
-      };
-
       return {
         report,
         trace: {
@@ -207,8 +165,6 @@ export class OpenAiDiagnosisGenerator implements DiagnosisGenerator {
         error: error instanceof Error ? error.message : String(error),
         notes: ["llm_report_error", "fallback_to_mock_report", policy.reason]
       });
-    } finally {
-      clearTimeout(timeout);
     }
   }
 }

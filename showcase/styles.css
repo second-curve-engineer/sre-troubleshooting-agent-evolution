@@ -261,7 +261,7 @@ nav {
 }
 
 .feature-card {
-  padding: 20px;
+  padding: 24px;
   border-radius: var(--radius);
   background: var(--surface);
   border: 1px solid var(--line);
@@ -271,20 +271,20 @@ nav {
 
 .feature-icon {
   font-size: 24px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .feature-card h3 {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   color: var(--ink);
 }
 
 .feature-card p {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--ink2);
-  line-height: 1.6;
+  line-height: 1.65;
 }
 
 /* ── ARCH PAGE ── */
@@ -466,6 +466,22 @@ nav {
   font-weight: 700;
 }
 
+/* warn-block: replay "待实现" 等警示段落 */
+.arch-detail-body .warn-block {
+  background: rgba(234, 179, 8, 0.08);
+  border-left: 3px solid var(--yellow);
+  border-radius: 0 6px 6px 0;
+  padding: 8px 10px;
+  color: var(--ink2);
+}
+
+/* syntax highlight tokens in code blocks */
+.arch-detail-body code .c-cmt    { color: var(--ink3); }
+.arch-detail-body code .c-str    { color: #e8b86d; }
+.arch-detail-body code .c-kw     { color: var(--primary); font-weight: 600; }
+.arch-detail-body code .c-arrow  { color: var(--green); font-weight: 700; }
+.arch-detail-body code .c-num    { color: #a8d8a8; }
+
 @media (max-width: 900px) {
   .arch-layout { grid-template-columns: 1fr; }
   .arch-detail-panel { position: static; }
@@ -511,24 +527,25 @@ nav {
 }
 
 .arch-box {
-  padding: 14px 18px;
+  padding: 18px 22px;
   border-radius: 10px;
   background: var(--surface);
   border: 1px solid var(--line);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .arch-box strong {
   display: block;
-  font-size: 14px;
-  margin-bottom: 4px;
+  font-size: 15px;
+  margin-bottom: 6px;
   color: var(--ink);
 }
 
 .arch-box p {
   color: var(--ink2);
-  font-size: 13px;
-  line-height: 1.55;
+  font-size: 14px;
+  line-height: 1.65;
+  margin-bottom: 4px;
 }
 
 .arch-box .tags {
@@ -634,6 +651,22 @@ nav {
   letter-spacing: 0.08em;
   color: var(--ink3);
   padding: 4px 0 8px;
+}
+
+.case-group-header {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink3);
+  padding: 12px 2px 5px;
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+}
+.case-group-header:first-child {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 2px;
 }
 
 .case-card {
@@ -789,6 +822,32 @@ nav {
 
 .term-text { color: var(--ink); }
 .term-detail { color: var(--ink2); margin-left: 100px; font-size: 12px; margin-top: -2px; margin-bottom: 6px; }
+
+.sim-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 6px 0 10px;
+  padding: 6px 11px;
+  border-radius: 7px;
+  background: rgba(234, 179, 8, 0.10);
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.sim-note-icon { font-size: 13px; flex-shrink: 0; }
+.sim-note-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: rgb(161, 120, 0);
+  background: rgba(234, 179, 8, 0.18);
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.sim-note-text { color: var(--ink2); }
 
 .term-status {
   display: inline-flex;
@@ -961,7 +1020,7 @@ nav {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  overflow: hidden;
+  overflow: visible;   /* tooltip 需要溢出面板，改为 visible */
   flex-shrink: 0;
 }
 
@@ -971,6 +1030,7 @@ nav {
   justify-content: space-between;
   padding: 10px 14px;
   border-bottom: 1px solid var(--line);
+  border-radius: var(--radius) var(--radius) 0 0;  /* 补回顶部圆角 */
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
@@ -1011,6 +1071,64 @@ nav {
   margin-bottom: 2px;
 }
 
+/* Router ⓘ tooltip */
+.metric-tip-wrap {
+  position: relative;
+}
+.tip-icon {
+  font-size: 10px;
+  cursor: help;
+  opacity: 0.6;
+  margin-left: 3px;
+  vertical-align: middle;
+}
+.metric-tip-box {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 100;
+  background: var(--surface);
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  padding: 10px 12px;
+  width: 260px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  font-size: 12px;
+  line-height: 1.5;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: var(--ink2);
+}
+.metric-tip-wrap:hover .metric-tip-box {
+  display: block;
+}
+.tip-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.tip-row:last-child { margin-bottom: 0; }
+.tip-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.tip-tag.rule     { background: var(--green-soft);    color: var(--green); }
+.tip-tag.llm      { background: var(--primary-soft);  color: var(--primary); }
+.tip-tag.fallback { background: var(--yellow-soft);   color: var(--yellow); }
+
+/* 右列 tooltip 向左展开，避免超出 inspector 右边界 */
+.metric-tip-box.tip-box-right {
+  left: auto;
+  right: 0;
+}
+
 .metric-value {
   font-size: 13px;
   font-weight: 700;
@@ -1034,6 +1152,41 @@ nav {
   animation: fadein 0.2s ease;
 }
 .tool-item:last-child { border-bottom: none; }
+
+/* A: Policy / Loop 步骤 — 灰色缩进，视觉上区分于工具调用 */
+.tool-item.is-policy {
+  opacity: 0.75;
+  padding-left: 6px;
+  border-left: 2px solid var(--yellow);
+}
+.tool-item.is-policy .tool-num {
+  background: rgba(234,179,8,0.12);
+  color: var(--yellow);
+  font-size: 12px;
+}
+.tool-item.is-policy .tool-name {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink2);
+}
+
+/* F: LLM 步骤 — 蓝色标记，区分于工具调用 */
+.tool-item.is-llm {
+  padding-left: 6px;
+  border-left: 2px solid var(--primary);
+}
+.tool-item.is-llm .tool-num {
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 11px;
+}
+.tool-item.is-llm .tool-name {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+}
 
 .tool-num {
   width: 22px;

@@ -26,6 +26,8 @@ export const ReportGenerationTraceSchema = z.object({
 export const RunStateSchema = z.object({
   runId: z.string(),
   sessionId: z.string(),
+  // OTel Agent Span 根节点 ID，toolTraces 和 llmCalls 的 parentSpanId 均指向此字段。
+  agentSpanId: z.string(),
   status: RunStatusSchema.default("running"),
   userMessage: z.string(),
   decision: WorkflowDecisionSchema.optional(),
@@ -34,6 +36,12 @@ export const RunStateSchema = z.object({
   approvals: z.array(HumanApprovalRequestSchema).default([]),
   pendingApprovalId: z.string().optional(),
   resumeFromStepId: z.string().optional(),
+  // 已完成步骤的原始结果缓存（stepId → ToolResult），HITL resume 时直接返回缓存结果。
+  // 用 z.unknown() 存储，runner 取出时强转为 ToolResult，避免 input/output 类型分歧。
+  // 这样 workflow 代码对"是否是 resume"完全透明，下游关键词判断、慢查询触发逻辑不受影响。
+  completedSteps: z.record(z.string(), z.unknown()).default({}),
+  // 运行失败时记录原因，配合 status="failed" 使用，保证失败 trace 也能落盘。
+  failureReason: z.string().optional(),
   evidence: z.array(EvidenceItemSchema).default([]),
   toolTraces: z.array(ToolTraceSchema).default([]),
   llmCalls: z.array(LlmCallTraceSchema).default([]),

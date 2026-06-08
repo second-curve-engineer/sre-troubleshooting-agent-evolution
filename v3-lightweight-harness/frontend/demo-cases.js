@@ -79,5 +79,21 @@ window.demoCases = [
     requiresApproval: true,
     message: "order-service 下单接口从 10:30 开始大量 504，模拟高风险重启，帮我排查。",
     checks: ["high risk", "pending", "approve / reject"]
+  },
+  {
+    id: "loop_max_iterations",
+    title: "Loop 超限退出",
+    category: "Agent Loop",
+    route: "performance",
+    message: "order-service 下单接口从 10:30 开始大量 504，模拟查询持续过宽，帮我排查。",
+    checks: ["max_iterations", "重试 2 次", "降级报告"]
+  },
+  {
+    id: "loop_tool_error",
+    title: "Loop 工具出错退出",
+    category: "Agent Loop",
+    route: "performance",
+    message: "order-service 下单接口从 10:30 开始大量 504，模拟日志平台超时，帮我排查。",
+    checks: ["tool_error", "timeout", "loop 立即终止"]
   }
 ];

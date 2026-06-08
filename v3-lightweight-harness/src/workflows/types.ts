@@ -1,6 +1,7 @@
 // Workflow 类型定义：描述每条排障路径如何声明 step、绑定工具并操作 RunState。
 import { EvidenceStore } from "../harness/evidence-store.js";
 import { SelfCorrectionPolicy } from "../harness/policies.js";
+import { EvidenceSummarizer } from "../llm/evidence-summarizer.js";
 import { RunState } from "../schemas/run.js";
 import { ToolResult } from "../schemas/tool.js";
 import { WorkflowRoute } from "../schemas/workflow.js";
@@ -25,6 +26,9 @@ export type WorkflowContext = {
   evidence: EvidenceStore;
   invokeTool: ToolInvoker;
   selfCorrectionPolicy: SelfCorrectionPolicy;
+  // 语义摘要生成器：工具拿到原始数据后，由小模型提炼 1-3 句关键发现写入 evidence。
+  // mock 模式降级为工具层机械 summary，保证 eval 零 API 调用也能通过。
+  evidenceSummarizer: EvidenceSummarizer;
 };
 
 export type WorkflowDefinition = {

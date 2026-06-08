@@ -18,10 +18,16 @@ export async function runConditionLogDiagnosis(context: WorkflowContext): Promis
     ["query_logs_by_condition"]
   );
 
+  const logSummary = await context.evidenceSummarizer.summarize({
+    toolName: "query_logs_by_condition",
+    appId,
+    query: "SELECT * WHERE log.level = 'ERROR' and http.status_code = '500'",
+    toolResult: logResult
+  });
   context.evidence.add({
     source: "query_logs_by_condition",
     kind: "log",
-    summary: `${appId} 条件日志查询: ${logResult.summary}`,
+    summary: `[${appId}] ${logSummary}`,
     confidence: logResult.status === "ok" ? "high" : "medium",
     usedInFinalReport: true
   });

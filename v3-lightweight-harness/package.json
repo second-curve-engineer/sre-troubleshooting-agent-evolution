@@ -5,13 +5,13 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "diagnose": "npm run build --silent && node dist/cli.js diagnose",
+    "diagnose": "npm run build --silent && node --env-file=.env dist/cli.js diagnose",
     "dev": "npm run diagnose --",
-    "eval": "npm run build --silent && node dist/cli.js eval",
-    "server": "npm run build --silent && node dist/server.js",
+    "eval": "npm run build --silent && node --env-file=.env dist/cli.js eval",
+    "server": "npm run build --silent && node --env-file=.env dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "hitl-demo": "npm run build --silent && node dist/cli.js hitl-demo"
+    "hitl-demo": "npm run build --silent && node --env-file=.env dist/cli.js hitl-demo"
   },
   "dependencies": {
     "zod": "^3.25.0"

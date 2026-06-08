@@ -9,6 +9,7 @@ import { RunTrace } from "../schemas/trace.js";
 import { redactUnknown } from "../security/redaction.js";
 import { ToolName, ToolRegistry } from "../tools/tool-registry.js";
 import { createDiagnosisGenerator, DiagnosisGenerator } from "../llm/report-adapter.js";
+import { createEvidenceSummarizer, EvidenceSummarizer } from "../llm/evidence-summarizer.js";
 import { getWorkflow } from "../workflows/registry.js";
 import { resolveAppForWorkflow } from "../workflows/shared.js";
 import { loadToolExecutionConfig, ToolExecutionConfig } from "../config/env.js";
@@ -25,6 +26,7 @@ export class HarnessRunner {
   private readonly approvalPolicy: ApprovalPolicy;
   private readonly toolExecution: ToolExecutionConfig;
   private readonly diagnosisGenerator: DiagnosisGenerator;
+  private readonly evidenceSummarizer: EvidenceSummarizer;
 
   constructor(options: {
     approvalMode?: ApprovalMode;
@@ -37,16 +39,21 @@ export class HarnessRunner {
       ...options.toolExecution
     };
     this.diagnosisGenerator = options.diagnosisGenerator ?? createDiagnosisGenerator();
+    this.evidenceSummarizer = createEvidenceSummarizer();
   }
 
   async run(userMessage: string, sessionId = "cli"): Promise<{ state: RunState; tracePath: string }> {
     const runId = `run-${new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${randomUUID().slice(0, 8)}`;
+    // agentSpanId 是本次 run 的根 Agent Span，所有 toolTraces 和 llmCalls 的 parentSpanId 均指向它。
+    const agentSpanId = randomUUID();
     const state: RunState = {
       runId,
       sessionId,
+      agentSpanId,
       status: "running",
       userMessage,
       approvals: [],
+      completedSteps: {},
       evidence: [],
       toolTraces: [],
       llmCalls: []
@@ -57,8 +64,14 @@ export class HarnessRunner {
     state.router = await routeWorkflow(userMessage);
     state.decision = state.router.decision;
     // llmCalls[] 是跨阶段的 LLM 成本视图；router/report 各自 trace 仍保留在原字段里。
+    // 由 runner 统一补齐 spanId/parentSpanId，adapter 层不感知 agentSpanId。
     if (state.router.llmCall) {
-      state.llmCalls.push(state.router.llmCall);
+      state.llmCalls.push({
+        ...state.router.llmCall,
+        spanId: randomUUID(),
+        parentSpanId: state.agentSpanId,
+        spanKind: "LLM"
+      });
     }
     evidence.add({
       source: "router",
@@ -73,7 +86,8 @@ export class HarnessRunner {
       state,
       evidence,
       invokeTool: this.invokeTool.bind(this),
-      selfCorrectionPolicy: this.policy
+      selfCorrectionPolicy: this.policy,
+      evidenceSummarizer: this.evidenceSummarizer
     };
 
     if (state.decision.route !== "clarification") {
@@ -89,17 +103,25 @@ export class HarnessRunner {
       await workflow.execute(workflowContext);
       state.status = "completed";
     } catch (caught) {
-      if (!(caught instanceof PendingApprovalError)) throw caught;
-      state.status = "waiting_approval";
-      state.pendingApprovalId = caught.approvalId;
-      state.resumeFromStepId = caught.stepId;
-      evidence.add({
-        source: "approval_policy",
-        kind: "system",
-        summary: `高风险工具 ${caught.toolName} 等待人工审批，approvalId=${caught.approvalId}`,
-        confidence: "medium",
-        usedInFinalReport: true
-      });
+      if (caught instanceof PendingApprovalError) {
+        state.status = "waiting_approval";
+        state.pendingApprovalId = caught.approvalId;
+        state.resumeFromStepId = caught.stepId;
+        evidence.add({
+          source: "approval_policy",
+          kind: "system",
+          summary: `高风险工具 ${caught.toolName} 等待人工审批，approvalId=${caught.approvalId}`,
+          confidence: "medium",
+          usedInFinalReport: true
+        });
+      } else {
+        // 未预期异常：设 failed 状态并立即落盘，保证 trace 不丢失，便于事后排查。
+        state.status = "failed";
+        state.failureReason = caught instanceof Error ? caught.message : String(caught);
+        state.evidence = evidence.list();
+        await this.persist(state);
+        throw caught;
+      }
     }
     state.evidence = evidence.list();
     await this.generateDiagnosis(state);
@@ -145,11 +167,13 @@ export class HarnessRunner {
     }
     const evidence = new EvidenceStore(state.evidence);
     const workflow = getWorkflow(state.decision.route);
+    // invokeTool 会检查 completedStepIds，已完成的步骤直接跳过，避免 resume 时重复执行。
     await workflow.execute({
       state,
       evidence,
       invokeTool: this.invokeTool.bind(this),
-      selfCorrectionPolicy: this.policy
+      selfCorrectionPolicy: this.policy,
+      evidenceSummarizer: this.evidenceSummarizer
     });
     state.status = "completed";
     state.evidence = evidence.list();
@@ -170,7 +194,11 @@ export class HarnessRunner {
     state.reportGeneration = result.trace;
     // 汇总 report LLM 调用，便于 eval 按统一口径检查 token budget。
     if (result.trace.llmCall) {
-      state.llmCalls.push(result.trace.llmCall);
+      state.llmCalls.push({
+        ...result.trace.llmCall,
+        spanId: randomUUID(),
+        parentSpanId: state.agentSpanId
+      });
     }
   }
 
@@ -181,6 +209,13 @@ export class HarnessRunner {
     input: Record<string, unknown>,
     allowedTools: ToolName[]
   ): Promise<ToolResult> {
+    // Resume 幂等保护：已完成的步骤直接返回上一轮的原始结果，不重新执行。
+    // 返回原始结果（而非 cancelled 占位）保证下游的关键词判断、慢查询触发等逻辑与首次运行完全一致。
+    if (state.completedSteps[stepId]) {
+      return state.completedSteps[stepId] as ToolResult;
+    }
+
+    const startTime = new Date().toISOString();
     const start = performance.now();
     let result: ToolResult;
     let error: string | null = null;
@@ -204,6 +239,10 @@ export class HarnessRunner {
       // 所有工具调用先过 approval policy，再进入 registry，保证风险控制和 trace 记录一致。
       if (approval.status === "pending") {
         const trace: ToolTrace = {
+          spanId: randomUUID(),
+          parentSpanId: state.agentSpanId,
+          startTime,
+          spanKind: "TOOL",
           runId: state.runId,
           stepId,
           toolName,
@@ -236,6 +275,10 @@ export class HarnessRunner {
           }
         };
         const trace: ToolTrace = {
+          spanId: randomUUID(),
+          parentSpanId: state.agentSpanId,
+          startTime,
+          spanKind: "TOOL",
           runId: state.runId,
           stepId,
           toolName,
@@ -276,6 +319,10 @@ export class HarnessRunner {
       };
     }
     const trace: ToolTrace = {
+      spanId: randomUUID(),
+      parentSpanId: state.agentSpanId,
+      startTime,
+      spanKind: "TOOL",
       runId: state.runId,
       stepId,
       toolName,
@@ -293,6 +340,11 @@ export class HarnessRunner {
       usedForDecision: true
     };
     state.toolTraces.push(trace);
+    // 工具成功执行后缓存原始结果，供 resume 时直接返回，保证幂等。
+    // timeout/error 不缓存：这些步骤下次 resume 时应重试。
+    if (result.status === "ok" || result.status === "empty" || result.status === "too_many_results") {
+      state.completedSteps[stepId] = result;
+    }
     return result;
   }
 

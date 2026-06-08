@@ -118,6 +118,7 @@ export async function queryLogsByCondition(input: {
   limit?: number;
   __simulateSensitiveLog?: boolean;
   __simulatePromptInjectionLog?: boolean;
+  __simulateAlwaysTooMany?: boolean;
 }): Promise<ToolResult> {
   const limit = input.limit ?? 5;
   const data = await readMockJson<Record<string, LogPayload>>("logs-by-condition.json");
@@ -130,7 +131,7 @@ export async function queryLogsByCondition(input: {
     input.query.includes("504") &&
     !input.query.toLowerCase().includes("timeout") &&
     !input.query.toLowerCase().includes("sql");
-  if (broad504Query) {
+  if (broad504Query || input.__simulateAlwaysTooMany) {
     matched = [...allLogs, ...allLogs, ...allLogs];
   }
 

@@ -4,6 +4,7 @@ import { RouterResult, WorkflowDecisionSchema } from "../schemas/workflow.js";
 import { sanitizeForLlm } from "../security/llm-safety.js";
 import { resolveModelPolicy } from "./model-policy.js";
 import { buildRouterSystemPrompt } from "./router-prompt.js";
+import { OpenAiClient } from "./openai-client.js";
 import { z } from "zod";
 
 export type LlmRouterAdapter = {
@@ -87,19 +88,6 @@ export class MockLlmRouterAdapter implements LlmRouterAdapter {
   }
 }
 
-type ChatCompletionResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string;
-    };
-  }>;
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-  };
-};
-
 const RouterPayloadSchema = WorkflowDecisionSchema.extend({
   confidence: z.number().min(0).max(1).default(0.5)
 });
@@ -127,7 +115,11 @@ function stripJsonFence(content: string): string {
 }
 
 export class OpenAiRouterAdapter implements LlmRouterAdapter {
-  constructor(private readonly config: LlmConfig = loadLlmConfig()) {}
+  private readonly client: OpenAiClient;
+
+  constructor(private readonly config: LlmConfig = loadLlmConfig()) {
+    this.client = new OpenAiClient(config.baseUrl, config.apiKey ?? "");
+  }
 
   async route(userMessage: string): Promise<RouterResult> {
     // Router 的模型选择由 ModelPolicy 决定；adapter 只负责执行和记录结果。
@@ -156,55 +148,21 @@ export class OpenAiRouterAdapter implements LlmRouterAdapter {
       };
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), policy.timeoutMs);
     const safeUserMessage = sanitizeForLlm(userMessage);
 
     try {
       // 使用 OpenAI-compatible Chat Completions，便于未来切换兼容网关或其他模型供应商。
-      const response = await fetch(`${this.config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${this.config.apiKey}`
-        },
-        body: JSON.stringify({
-          model: policy.model,
-          temperature: 0,
-          response_format: { type: "json_object" },
-          messages: [
-            {
-              role: "system",
-              content: buildRouterSystemPrompt()
-            },
-            {
-              role: "user",
-              content: safeUserMessage.text
-            }
-          ]
-        })
+      const { content, tokenUsage } = await this.client.complete({
+        model: policy.model,
+        timeoutMs: policy.timeoutMs,
+        responseFormat: { type: "json_object" },
+        messages: [
+          { role: "system", content: buildRouterSystemPrompt() },
+          { role: "user", content: safeUserMessage.text }
+        ]
       });
 
-      const data = (await response.json()) as ChatCompletionResponse & { error?: { message?: string } };
-      if (!response.ok) {
-        throw new Error(data.error?.message ?? `LLM router HTTP ${response.status}`);
-      }
-
-      const content = data.choices?.[0]?.message?.content;
-      if (!content) {
-        throw new Error("LLM router returned empty content");
-      }
-
       const payload = parseRouterPayload(stripJsonFence(content));
-      const promptTokens = data.usage?.prompt_tokens ?? 0;
-      const completionTokens = data.usage?.completion_tokens ?? 0;
-      const tokenUsage = {
-        inputTokens: promptTokens,
-        outputTokens: completionTokens,
-        totalTokens: data.usage?.total_tokens ?? promptTokens + completionTokens
-      };
-
       return {
         decision: payload.decision,
         source: "llm",
@@ -230,6 +188,7 @@ export class OpenAiRouterAdapter implements LlmRouterAdapter {
       };
     } catch (error) {
       // Router 失败不能让整次诊断崩掉，降级为 clarification，保留错误原因到 trace。
+      const zeroUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
       return {
         decision: {
           problemType: "unknown",
@@ -239,11 +198,7 @@ export class OpenAiRouterAdapter implements LlmRouterAdapter {
         source: "fallback",
         confidence: 0,
         usedLlm: true,
-        tokenUsage: {
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0
-        },
+        tokenUsage: zeroUsage,
         llmCall: {
           role: policy.role,
           source: "fallback",
@@ -251,18 +206,12 @@ export class OpenAiRouterAdapter implements LlmRouterAdapter {
           modelTier: policy.modelTier,
           tokenBudget: policy.tokenBudget,
           timeoutMs: policy.timeoutMs,
-          tokenUsage: {
-            inputTokens: 0,
-            outputTokens: 0,
-            totalTokens: 0
-          },
+          tokenUsage: zeroUsage,
           error: error instanceof Error ? error.message : String(error),
           notes: [policy.reason]
         },
         notes: ["llm_router_error", `model_policy=${policy.modelTier}:${policy.model}`]
       };
-    } finally {
-      clearTimeout(timeout);
     }
   }
 }

@@ -2,7 +2,7 @@
 import { AppInfo } from "../schemas/app.js";
 import { RunState } from "../schemas/run.js";
 import { EvidenceStore } from "../harness/evidence-store.js";
-import { ToolInvoker } from "./types.js";
+import { ToolInvoker, WorkflowContext } from "./types.js";
 
 export async function resolveAppForWorkflow(args: {
   state: RunState;
@@ -32,15 +32,11 @@ export async function resolveAppForWorkflow(args: {
   });
 }
 
-export async function askCodeIfPossible(args: {
-  state: RunState;
-  evidence: EvidenceStore;
-  invokeTool: ToolInvoker;
-}): Promise<void> {
-  if (!args.state.app?.codebasePath) return;
+export async function askCodeIfPossible(context: WorkflowContext): Promise<void> {
+  if (!context.state.app?.codebasePath) return;
 
-  const codeResult = await args.invokeTool(
-    args.state,
+  const codeResult = await context.invokeTool(
+    context.state,
     "step-code",
     "ask_codebase",
     {
@@ -50,10 +46,14 @@ export async function askCodeIfPossible(args: {
     ["ask_codebase"]
   );
 
-  args.evidence.add({
+  const codeSummary = await context.evidenceSummarizer.summarize({
+    toolName: "ask_codebase",
+    toolResult: codeResult
+  });
+  context.evidence.add({
     source: "ask_codebase",
     kind: "code",
-    summary: `${codeResult.summary}; 文件=${String((codeResult.outputSummary ?? {}).file ?? "unknown")}:${String((codeResult.outputSummary ?? {}).line ?? "")}`,
+    summary: codeSummary,
     confidence: codeResult.status === "ok" ? "high" : "medium",
     usedInFinalReport: true
   });
