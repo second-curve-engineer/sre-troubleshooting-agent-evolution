@@ -14,6 +14,12 @@ export type DiagnosisGeneratorInput = {
   userMessage: string;
   decision: WorkflowDecision;
   evidence: EvidenceItem[];
+  /**
+   * root_cause 阶段的推导结论（可选）。
+   * 存在时注入 report prompt，让 report LLM 只做格式化而非重复推理，
+   * 降低 standard tier 的认知负荷，提升报告质量。
+   */
+  rootCauseAnalysis?: string;
 };
 
 export type DiagnosisGeneratorResult = {
@@ -113,7 +119,8 @@ export class OpenAiDiagnosisGenerator implements DiagnosisGenerator {
       buildReportUserPrompt({
         userMessage: input.userMessage,
         decision: input.decision,
-        evidence: input.evidence
+        evidence: input.evidence,
+        rootCauseAnalysis: input.rootCauseAnalysis
       })
     );
 

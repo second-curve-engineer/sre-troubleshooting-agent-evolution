@@ -1,6 +1,7 @@
 // Eval 指标：基于运行后的 state/trace 检查路由、工具顺序、证据和 token 成本。
 import { RunState } from "../schemas/run.js";
 import { ToolName } from "../tools/tool-registry.js";
+import { JudgeEvaluatorOutput } from "../llm/judge-evaluator.js";
 import { EvalCase } from "./cases.js";
 
 export type EvalCheck = {
@@ -40,6 +41,7 @@ export function evaluateCase(args: {
   testCase: EvalCase;
   state: RunState;
   tracePath: string;
+  judgeResult?: JudgeEvaluatorOutput;
 }): EvalCaseResult {
   const actualRoute = args.state.decision?.route;
   const actualTools = args.state.toolTraces.map((trace) => trace.toolName as ToolName);
@@ -140,6 +142,17 @@ export function evaluateCase(args: {
         message: `expected ${expected.toolName} status=${expected.status}`
       });
     }
+  }
+
+  // LLM-as-judge：仅在 testCase 指定了 minJudgeScore 且 runner 传入了 judgeResult 时执行
+  if (args.testCase.minJudgeScore !== undefined && args.judgeResult) {
+    const minScore = args.testCase.minJudgeScore;
+    const { score, reasoning, passed: judgePassed } = args.judgeResult;
+    checks.push({
+      name: "judge_quality",
+      passed: judgePassed && score >= minScore,
+      message: `score=${score.toFixed(2)} (min=${minScore}): ${reasoning}`
+    });
   }
 
   return {

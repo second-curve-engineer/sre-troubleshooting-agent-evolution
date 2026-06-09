@@ -45,6 +45,9 @@ export const RunStateSchema = z.object({
   evidence: z.array(EvidenceItemSchema).default([]),
   toolTraces: z.array(ToolTraceSchema).default([]),
   llmCalls: z.array(LlmCallTraceSchema).default([]),
+  // root_cause 阶段的结构化输出，序列化后注入 report prompt。
+  // 仅在 evidence 充分（usedInFinalReport ≥ 2 条非 system 项）时填充。
+  rootCauseAnalysis: z.string().optional(),
   reportGeneration: ReportGenerationTraceSchema.optional(),
   finalReport: DiagnosisReportSchema.optional()
 });

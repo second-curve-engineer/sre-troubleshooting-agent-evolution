@@ -10,6 +10,11 @@ import { redactUnknown } from "../security/redaction.js";
 import { ToolName, ToolRegistry } from "../tools/tool-registry.js";
 import { createDiagnosisGenerator, DiagnosisGenerator } from "../llm/report-adapter.js";
 import { createEvidenceSummarizer, EvidenceSummarizer } from "../llm/evidence-summarizer.js";
+import {
+  createRootCauseAnalyzer,
+  formatRootCauseForReport,
+  RootCauseAnalyzer
+} from "../llm/root-cause-analyzer.js";
 import { getWorkflow } from "../workflows/registry.js";
 import { resolveAppForWorkflow } from "../workflows/shared.js";
 import { loadToolExecutionConfig, ToolExecutionConfig } from "../config/env.js";
@@ -27,6 +32,7 @@ export class HarnessRunner {
   private readonly toolExecution: ToolExecutionConfig;
   private readonly diagnosisGenerator: DiagnosisGenerator;
   private readonly evidenceSummarizer: EvidenceSummarizer;
+  private readonly rootCauseAnalyzer: RootCauseAnalyzer;
 
   constructor(options: {
     approvalMode?: ApprovalMode;
@@ -40,6 +46,7 @@ export class HarnessRunner {
     };
     this.diagnosisGenerator = options.diagnosisGenerator ?? createDiagnosisGenerator();
     this.evidenceSummarizer = createEvidenceSummarizer();
+    this.rootCauseAnalyzer = createRootCauseAnalyzer();
   }
 
   async run(userMessage: string, sessionId = "cli"): Promise<{ state: RunState; tracePath: string }> {
@@ -185,10 +192,36 @@ export class HarnessRunner {
     if (!state.decision) {
       throw new Error("cannot generate diagnosis without workflow decision");
     }
+
+    // ── 阶段一：root_cause（strong tier）——仅在证据充分时运行 ──
+    // 由 analyzer.shouldAnalyze() 决定是否值得调用 strong 模型：
+    //   - 条件：usedInFinalReport=true 且 kind≠system 的证据 ≥ 2 条
+    //   - 简单场景（clarification、工具全失败）直接跳到 report 阶段
+    let rootCauseAnalysis: string | undefined;
+    if (this.rootCauseAnalyzer.shouldAnalyze(state.evidence)) {
+      const rcResult = await this.rootCauseAnalyzer.analyze({
+        userMessage: state.userMessage,
+        decision: state.decision,
+        evidence: state.evidence
+      });
+      rootCauseAnalysis = formatRootCauseForReport(rcResult.analysis);
+      state.rootCauseAnalysis = rootCauseAnalysis;
+      // 汇总 root_cause LLM 调用，供 eval llm_policy_budget 检查
+      state.llmCalls.push({
+        ...rcResult.llmCall,
+        spanId: rcResult.llmCall.spanId ?? randomUUID(),
+        parentSpanId: state.agentSpanId
+      });
+    }
+
+    // ── 阶段二：report（standard tier）——基于证据 + 可选根因分析生成结构化报告 ──
+    // 有 rootCauseAnalysis 时，report LLM 只需格式化，不需要重新推理，
+    // 实际认知负荷更低，standard tier 足够完成任务。
     const result = await this.diagnosisGenerator.generate({
       userMessage: state.userMessage,
       decision: state.decision,
-      evidence: state.evidence
+      evidence: state.evidence,
+      rootCauseAnalysis
     });
     state.finalReport = result.report;
     state.reportGeneration = result.trace;

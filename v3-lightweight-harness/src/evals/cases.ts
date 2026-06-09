@@ -21,6 +21,12 @@ export type EvalCase = {
     riskLevel: "low" | "medium" | "high" | "critical";
     status: "pending" | "approved" | "rejected" | "auto_approved";
   }>;
+  /**
+   * LLM-as-judge 最低通过分（0.0 – 1.0）。
+   * 设置后，eval runner 在正常检查之外额外调用 judge 评估报告质量。
+   * 不设置则跳过 judge（适合无诊断报告或聚焦工具行为的 case）。
+   */
+  minJudgeScore?: number;
 };
 
 export const evalCases: EvalCase[] = [
@@ -37,7 +43,8 @@ export const evalCases: EvalCase[] = [
       { toolName: "resolve_app", riskLevel: "low", status: "auto_approved" },
       { toolName: "query_logs_by_trace_id", riskLevel: "low", status: "auto_approved" },
       { toolName: "ask_codebase", riskLevel: "low", status: "auto_approved" }
-    ]
+    ],
+    minJudgeScore: 0.6
   },
   {
     id: "condition_500_no_trace",
@@ -47,7 +54,8 @@ export const evalCases: EvalCase[] = [
     expectedEvidenceKeywords: ["trace", "java.lang.NullPointerException", "InventoryService.java"],
     expectedConfidence: "high",
     expectedUsedLlm: false,
-    maxRouterTokens: 0
+    maxRouterTokens: 0,
+    minJudgeScore: 0.6
   },
   {
     id: "timeout_504_mysql",
@@ -60,7 +68,8 @@ export const evalCases: EvalCase[] = [
     maxRouterTokens: 0,
     expectedApprovals: [
       { toolName: "query_mysql_slow_log", riskLevel: "medium", status: "auto_approved" }
-    ]
+    ],
+    minJudgeScore: 0.6
   },
   {
     id: "insufficient_context",
