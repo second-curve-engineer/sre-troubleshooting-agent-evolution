@@ -12,6 +12,8 @@ export async function runPerformanceDiagnosis(context: WorkflowContext): Promise
   const simulateHighRiskRestart = context.state.userMessage.includes("模拟高风险重启");
   const simulateAlwaysTooMany = context.state.userMessage.includes("模拟查询持续过宽");
   let query = "SELECT * WHERE http.status_code = '504'";
+  let fromTime = "2026-05-28 10:30:00";
+  let toTime = "2026-05-28 10:35:00";
   let refinementCount = 0;
   let logResult: ToolResult;
   let terminationReason: QueryLoopTerminationReason = "completed";
@@ -26,8 +28,8 @@ export async function runPerformanceDiagnosis(context: WorkflowContext): Promise
       {
         appId,
         query,
-        fromTime: "2026-05-28 10:30:00",
-        toTime: "2026-05-28 10:35:00",
+        fromTime,
+        toTime,
         env: "prod",
         limit: 5,
         // 4000ms > TOOL_TIMEOUT_MS(3000ms)，技术重试耗尽后查询迭代以 tool_failure 退出。
@@ -69,6 +71,8 @@ export async function runPerformanceDiagnosis(context: WorkflowContext): Promise
         iterationIndex: refinementCount
       });
       query = refinement.nextQuery;
+      if (refinement.fromTime) fromTime = refinement.fromTime;
+      if (refinement.toTime) toTime = refinement.toTime;
       context.evidence.add({
         source: "loop_query_refiner",
         kind: "system",

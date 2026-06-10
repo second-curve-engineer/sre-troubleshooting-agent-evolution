@@ -43,6 +43,35 @@ function summarizeLog(log: LogItem): Record<string, unknown> {
   };
 }
 
+type TimeDistribution = {
+  peakMinute: string;
+  suggestedFromTime: string;
+  suggestedToTime: string;
+  buckets: Record<string, number>;
+};
+
+function extractTimeDistribution(logs: LogItem[]): TimeDistribution | undefined {
+  const buckets: Record<string, number> = {};
+  for (const log of logs) {
+    const ts = String(log.timestamp ?? "").replace("T", " ").slice(0, 16);
+    if (ts.length >= 16) {
+      buckets[ts] = (buckets[ts] ?? 0) + 1;
+    }
+  }
+  const entries = Object.entries(buckets).sort((a, b) => b[1] - a[1]);
+  const peakMinute = entries[0]?.[0];
+  if (!peakMinute) return undefined;
+
+  const fmt = (d: Date) => d.toISOString().replace("T", " ").slice(0, 19);
+  const peak = new Date(peakMinute.replace(" ", "T") + ":00Z");
+  return {
+    peakMinute,
+    suggestedFromTime: fmt(new Date(peak.getTime() - 60_000)),
+    suggestedToTime: fmt(new Date(peak.getTime() + 60_000)),
+    buckets
+  };
+}
+
 function buildSecurityProbe(input: {
   __simulateSensitiveLog?: boolean;
   __simulatePromptInjectionLog?: boolean;
@@ -152,6 +181,7 @@ export async function queryLogsByCondition(input: {
       ]
     : [];
   const securityProbe = buildSecurityProbe(input);
+  const timeDistribution = truncated ? extractTimeDistribution(matched) : undefined;
 
   return {
     status: matched.length === 0 ? "empty" : truncated ? "too_many_results" : "ok",
@@ -169,7 +199,8 @@ export async function queryLogsByCondition(input: {
       returnedCount: sampleLogs.length,
       truncated,
       traceIds,
-      securityProbe
+      securityProbe,
+      timeDistribution
     },
     suggestedNextQueries,
     detectedKeywords

@@ -16,6 +16,8 @@ export type LoopQueryRefinerInput = {
 
 export type LoopQueryRefinerOutput = {
   nextQuery: string;
+  fromTime?: string;
+  toTime?: string;
   reasoning: string;
   llmCall: Omit<LlmCallTrace, "spanId" | "parentSpanId" | "startTime" | "spanKind">;
 };
@@ -47,8 +49,13 @@ export class MockLoopQueryRefiner implements LoopQueryRefiner {
     const { previousQuery, toolResult } = input;
     const suggested = toolResult.suggestedNextQueries ?? [];
     const keywords = (toolResult.detectedKeywords ?? []).map((k) => k.toLowerCase());
+    const timeDistribution = (toolResult.outputSummary as Record<string, unknown>)?.timeDistribution as
+      | { suggestedFromTime: string; suggestedToTime: string; peakMinute: string }
+      | undefined;
 
     let nextQuery: string;
+    let fromTime: string | undefined;
+    let toTime: string | undefined;
     let reasoning: string;
 
     if (suggested.length > 0) {
@@ -60,6 +67,11 @@ export class MockLoopQueryRefiner implements LoopQueryRefiner {
     } else if (keywords.some((k) => k.includes("timeout"))) {
       nextQuery = `${previousQuery} and log.msg ~ 'timeout'`;
       reasoning = "检测到 timeout 关键词，收窄到超时相关日志";
+    } else if (timeDistribution) {
+      nextQuery = previousQuery;
+      fromTime = timeDistribution.suggestedFromTime;
+      toTime = timeDistribution.suggestedToTime;
+      reasoning = `按时间分布收窄到峰值窗口 ${timeDistribution.peakMinute} 附近`;
     } else {
       nextQuery = `${previousQuery} and log.level = 'ERROR'`;
       reasoning = "结果不满足条件，收窄到 ERROR 级别日志";
@@ -70,6 +82,8 @@ export class MockLoopQueryRefiner implements LoopQueryRefiner {
 
     return {
       nextQuery,
+      fromTime,
+      toTime,
       reasoning,
       llmCall: {
         role: "loop_query_refiner",
@@ -122,6 +136,8 @@ export class OpenAiLoopQueryRefiner implements LoopQueryRefiner {
 
       const parsed = JSON.parse(stripJsonFence(content)) as {
         nextQuery?: string;
+        fromTime?: string;
+        toTime?: string;
         reasoning?: string;
       };
       const nextQuery = parsed.nextQuery?.trim() || input.previousQuery;
@@ -129,6 +145,8 @@ export class OpenAiLoopQueryRefiner implements LoopQueryRefiner {
 
       return {
         nextQuery,
+        fromTime: parsed.fromTime?.trim() || undefined,
+        toTime: parsed.toTime?.trim() || undefined,
         reasoning,
         llmCall: {
           role: "loop_query_refiner",
