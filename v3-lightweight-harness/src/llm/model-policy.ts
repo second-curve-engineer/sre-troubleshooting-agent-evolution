@@ -45,10 +45,11 @@ function envName(role: LlmRole, suffix: string): string {
 }
 
 function resolveModelForTier(tier: ModelTier, config: LlmConfig): string {
-  if (tier === "small") return envString("LLM_SMALL_MODEL") ?? config.model;
-  if (tier === "standard") return envString("LLM_STANDARD_MODEL") ?? config.model;
-  if (tier === "strong") return envString("LLM_STRONG_MODEL") ?? config.model;
-  return config.model;
+  const standardModel = envString("LLM_STANDARD_MODEL") ?? config.model;
+  if (tier === "small") return envString("LLM_SMALL_MODEL") ?? standardModel;
+  if (tier === "standard") return standardModel;
+  if (tier === "strong") return envString("LLM_STRONG_MODEL") ?? standardModel;
+  return standardModel;
 }
 
 function resolveTier(role: LlmRole, fallback: ModelTier): ModelTier {

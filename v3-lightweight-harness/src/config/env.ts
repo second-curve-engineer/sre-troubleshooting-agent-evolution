@@ -24,7 +24,7 @@ export function loadLlmConfig(): LlmConfig {
     mode: asLlmMode(process.env.LLM_MODE ?? process.env.LLM_ROUTER_MODE ?? process.env.LLM_REPORT_MODE),
     apiKey: process.env.OPENAI_API_KEY,
     baseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
-    model: process.env.LLM_MODEL ?? process.env.OPENAI_MODEL ?? process.env.LLM_ROUTER_MODEL ?? process.env.LLM_REPORT_MODEL ?? "gpt-5.5",
+    model: process.env.LLM_STANDARD_MODEL ?? process.env.LLM_MODEL ?? process.env.OPENAI_MODEL ?? "gpt-5.4",
     timeoutMs: Number(process.env.LLM_TIMEOUT_MS ?? process.env.LLM_ROUTER_TIMEOUT_MS ?? process.env.LLM_REPORT_TIMEOUT_MS ?? 15000)
   };
 }
