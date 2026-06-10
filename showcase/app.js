@@ -18,7 +18,13 @@ navLinks.forEach(a => {
     e.preventDefault();
     showSection(a.dataset.section);
     history.pushState({}, '', '#' + a.dataset.section);
+    document.querySelector('nav').classList.remove('open');
   });
+});
+
+const hamburger = document.getElementById('navHamburger');
+hamburger.addEventListener('click', () => {
+  document.querySelector('nav').classList.toggle('open');
 });
 
 document.querySelectorAll('[data-goto]').forEach(el => {
