@@ -11,6 +11,8 @@ export type LlmConfig = {
 
 export type ToolExecutionConfig = {
   timeoutMs: number;
+  maxAttempts: number;
+  retryDelayMs: number;
 };
 
 function asLlmMode(value: string | undefined): LlmMode {
@@ -29,6 +31,8 @@ export function loadLlmConfig(): LlmConfig {
 
 export function loadToolExecutionConfig(): ToolExecutionConfig {
   return {
-    timeoutMs: Number(process.env.TOOL_TIMEOUT_MS ?? 3000)
+    timeoutMs: Number(process.env.TOOL_TIMEOUT_MS ?? 3000),
+    maxAttempts: Math.max(1, Number(process.env.TOOL_MAX_ATTEMPTS ?? 2)),
+    retryDelayMs: Math.max(0, Number(process.env.TOOL_RETRY_DELAY_MS ?? 100))
   };
 }

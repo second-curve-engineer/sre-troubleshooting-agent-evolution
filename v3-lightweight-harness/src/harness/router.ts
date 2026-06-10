@@ -14,10 +14,40 @@ function extractAppHint(message: string): string | undefined {
   return undefined;
 }
 
+// 提取接口路径，如 "POST /order/create" 或 "/order/create"
+function extractInterfaceHint(message: string): string | undefined {
+  const match = message.match(/(?:GET|POST|PUT|DELETE|PATCH)\s+(\/[^\s，,。]+)/)
+    ?? message.match(/(\/[a-zA-Z][a-zA-Z0-9/_-]{2,})/);
+  return match?.[1];
+}
+
+// 提取错误码，优先业务错误码（ERR_xxx / BIZ_xxx），其次 HTTP 状态码
+function extractErrorCodeHint(message: string): string | undefined {
+  return message.match(/[A-Z]{2,}_\d+/)?.[0]      // ERR_10086、BIZ_4001
+    ?? message.match(/\b(4\d{2}|5\d{2})\b/)?.[1]; // 400-599
+}
+
+// 提取时间窗口，如"最近 5 分钟" / "过去 10min"
+function extractTimeWindowMin(message: string): number | undefined {
+  const match = message.match(/(?:最近|过去|近)\s*(\d+)\s*(?:分钟|min)/i);
+  return match ? Number(match[1]) : undefined;
+}
+
+// 根据时间窗口计算起止时间字符串（ISO 格式）
+export function resolveTimeRange(timeWindowMin?: number): { fromTime: string; toTime: string } {
+  const toTime = new Date();
+  const fromTime = new Date(toTime.getTime() - (timeWindowMin ?? 10) * 60 * 1000);
+  const fmt = (d: Date) => d.toISOString().replace("T", " ").slice(0, 19);
+  return { fromTime: fmt(fromTime), toTime: fmt(toTime) };
+}
+
 function heuristicDecision(userMessage: string): RouterResult {
   const lowered = userMessage.toLowerCase();
   const traceId = extractTraceId(userMessage);
   const appHint = extractAppHint(userMessage);
+  const interfaceHint = extractInterfaceHint(userMessage);
+  const errorCodeHint = extractErrorCodeHint(userMessage);
+  const timeWindowMin = extractTimeWindowMin(userMessage);
   const hasPerformanceSignal =
     lowered.includes("504") ||
     lowered.includes("timeout") ||
@@ -45,24 +75,7 @@ function heuristicDecision(userMessage: string): RouterResult {
     };
   }
 
-  // 504、timeout、慢查询这类信号足够明确，直接走性能排查，不消耗 router token。
-  if (hasPerformanceSignal) {
-    return {
-      decision: {
-        problemType: "performance",
-        route: "performance",
-        reason: "输入包含 504/timeout/慢 等性能问题信号",
-        appHint,
-        traceId
-      },
-      source: "heuristic",
-      confidence: 0.95,
-      usedLlm: false,
-      notes: ["high-confidence performance signal"]
-    };
-  }
-
-  // trace_id 是最强路由信号，可以直接进入链路日志诊断。
+  // trace_id 是最强路由信号：即使同时出现 504/timeout，也优先按完整链路定位故障。
   if (traceId) {
     return {
       decision: {
@@ -79,6 +92,23 @@ function heuristicDecision(userMessage: string): RouterResult {
     };
   }
 
+  // 没有 trace_id 时，504、timeout、慢查询信号直接走性能排查，不消耗 router token。
+  if (hasPerformanceSignal) {
+    return {
+      decision: {
+        problemType: "performance",
+        route: "performance",
+        reason: "输入包含 504/timeout/慢 等性能问题信号",
+        appHint,
+        traceId
+      },
+      source: "heuristic",
+      confidence: 0.95,
+      usedLlm: false,
+      notes: ["high-confidence performance signal"]
+    };
+  }
+
   // 有明确报错和服务名，但没有 trace_id，先从条件日志反查 trace。
   if (hasErrorSignal && appHint) {
     return {
@@ -86,7 +116,10 @@ function heuristicDecision(userMessage: string): RouterResult {
         problemType: "interface_error",
         route: "condition-log",
         reason: "输入有接口报错信号但没有 trace_id，先按条件日志查询",
-        appHint
+        appHint,
+        interfaceHint,
+        errorCodeHint,
+        timeWindowMin
       },
       source: "heuristic",
       confidence: 0.86,

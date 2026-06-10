@@ -117,7 +117,8 @@ export class ToolRegistry {
       return {
         status: "error",
         summary: `工具 ${args.toolName} 不在当前 step 白名单中`,
-        outputSummary: { allowedTools: args.allowedTools }
+        outputSummary: { allowedTools: args.allowedTools },
+        retryable: false
       };
     }
     if (typeof args.input.__simulateDelayMs === "number") {
@@ -129,7 +130,8 @@ export class ToolRegistry {
         summary: `工具 ${args.toolName} 模拟失败`,
         outputSummary: {
           simulatedFailure: true
-        }
+        },
+        retryable: true
       };
     }
     return handlers[args.toolName](args.input);

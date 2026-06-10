@@ -10,6 +10,7 @@ import { redactUnknown } from "../security/redaction.js";
 import { ToolName, ToolRegistry } from "../tools/tool-registry.js";
 import { createDiagnosisGenerator, DiagnosisGenerator } from "../llm/report-adapter.js";
 import { createEvidenceSummarizer, EvidenceSummarizer } from "../llm/evidence-summarizer.js";
+import { createLoopQueryRefiner, LoopQueryRefiner } from "../llm/loop-decision-adapter.js";
 import {
   createRootCauseAnalyzer,
   formatRootCauseForReport,
@@ -20,19 +21,20 @@ import { resolveAppForWorkflow } from "../workflows/shared.js";
 import { loadToolExecutionConfig, ToolExecutionConfig } from "../config/env.js";
 import { ApprovalPolicy } from "./approval-policy.js";
 import { EvidenceStore } from "./evidence-store.js";
-import { SelfCorrectionPolicy } from "./policies.js";
+import { QueryRefinementPolicy } from "./policies.js";
 import { routeWorkflow } from "./router.js";
 import { TraceStore } from "./trace-store.js";
 
 export class HarnessRunner {
   private readonly tools = new ToolRegistry();
   private readonly traces = new TraceStore();
-  private readonly policy = new SelfCorrectionPolicy();
+  private readonly queryRefinementPolicy = new QueryRefinementPolicy();
   private readonly approvalPolicy: ApprovalPolicy;
   private readonly toolExecution: ToolExecutionConfig;
   private readonly diagnosisGenerator: DiagnosisGenerator;
   private readonly evidenceSummarizer: EvidenceSummarizer;
   private readonly rootCauseAnalyzer: RootCauseAnalyzer;
+  private readonly loopQueryRefiner: LoopQueryRefiner;
 
   constructor(options: {
     approvalMode?: ApprovalMode;
@@ -47,6 +49,7 @@ export class HarnessRunner {
     this.diagnosisGenerator = options.diagnosisGenerator ?? createDiagnosisGenerator();
     this.evidenceSummarizer = createEvidenceSummarizer();
     this.rootCauseAnalyzer = createRootCauseAnalyzer();
+    this.loopQueryRefiner = createLoopQueryRefiner();
   }
 
   async run(userMessage: string, sessionId = "cli"): Promise<{ state: RunState; tracePath: string }> {
@@ -93,8 +96,9 @@ export class HarnessRunner {
       state,
       evidence,
       invokeTool: this.invokeTool.bind(this),
-      selfCorrectionPolicy: this.policy,
-      evidenceSummarizer: this.evidenceSummarizer
+      queryRefinementPolicy: this.queryRefinementPolicy,
+      evidenceSummarizer: this.evidenceSummarizer,
+      loopQueryRefiner: this.loopQueryRefiner
     };
 
     if (state.decision.route !== "clarification") {
@@ -179,8 +183,9 @@ export class HarnessRunner {
       state,
       evidence,
       invokeTool: this.invokeTool.bind(this),
-      selfCorrectionPolicy: this.policy,
-      evidenceSummarizer: this.evidenceSummarizer
+      queryRefinementPolicy: this.queryRefinementPolicy,
+      evidenceSummarizer: this.evidenceSummarizer,
+      loopQueryRefiner: this.loopQueryRefiner
     });
     state.status = "completed";
     state.evidence = evidence.list();
@@ -253,6 +258,7 @@ export class HarnessRunner {
     let result: ToolResult;
     let error: string | null = null;
     let timedOut = false;
+    let attemptCount = 0;
     try {
       const metadata = this.tools.getMetadata(toolName);
       const existingApproval = [...state.approvals]
@@ -288,6 +294,7 @@ export class HarnessRunner {
           },
           status: "cancelled",
           timeoutMs: this.toolExecution.timeoutMs,
+          attemptCount: 1,
           timedOut: false,
           durationMs: Math.round(performance.now() - start),
           error: `工具 ${toolName} 等待人工审批`,
@@ -321,6 +328,7 @@ export class HarnessRunner {
           outputSummary: redactUnknown(result.outputSummary ?? {}) as Record<string, unknown>,
           status: result.status,
           timeoutMs: this.toolExecution.timeoutMs,
+          attemptCount: 1,
           timedOut: false,
           durationMs: Math.round(performance.now() - start),
           error: result.summary,
@@ -330,17 +338,46 @@ export class HarnessRunner {
         return result;
       }
 
-      result = await this.withTimeout(
-        this.tools.invoke({ toolName, input, allowedTools }),
-        this.toolExecution.timeoutMs,
-        toolName
-      );
+      do {
+        attemptCount += 1;
+        error = null;
+        timedOut = false;
+        try {
+          result = await this.withTimeout(
+            this.tools.invoke({ toolName, input, allowedTools }),
+            this.toolExecution.timeoutMs,
+            toolName
+          );
+        } catch (caught) {
+          error = caught instanceof Error ? caught.message : String(caught);
+          timedOut = caught instanceof ToolTimeoutError;
+          result = {
+            status: timedOut ? "timeout" : "error",
+            summary: error,
+            outputSummary: timedOut
+              ? {
+                  timeoutMs: this.toolExecution.timeoutMs
+                }
+              : {},
+            retryable: true
+          };
+        }
+
+        const retryable =
+          result.status === "timeout" ||
+          (result.status === "error" && result.retryable !== false);
+        if (!retryable || attemptCount >= this.toolExecution.maxAttempts) {
+          break;
+        }
+        await this.delay(this.toolExecution.retryDelayMs);
+      } while (attemptCount < this.toolExecution.maxAttempts);
     } catch (caught) {
       if (caught instanceof PendingApprovalError) {
         throw caught;
       }
       error = caught instanceof Error ? caught.message : String(caught);
       timedOut = caught instanceof ToolTimeoutError;
+      attemptCount = Math.max(attemptCount, 1);
       result = {
         status: timedOut ? "timeout" : "error",
         summary: error,
@@ -367,12 +404,23 @@ export class HarnessRunner {
       outputSummary: redactUnknown(result.outputSummary ?? {}) as Record<string, unknown>,
       status: result.status,
       timeoutMs: this.toolExecution.timeoutMs,
+      attemptCount: Math.max(attemptCount, 1),
       timedOut,
       durationMs: Math.round(performance.now() - start),
       error,
       usedForDecision: true
     };
     state.toolTraces.push(trace);
+    if (result.llmCall) {
+      state.llmCalls.push({
+        ...result.llmCall,
+        spanId: result.llmCall.spanId ?? randomUUID(),
+        parentSpanId: result.llmCall.parentSpanId ?? state.agentSpanId,
+        startTime: result.llmCall.startTime ?? startTime,
+        spanKind: "LLM",
+        notes: result.llmCall.notes ?? []
+      });
+    }
     // 工具成功执行后缓存原始结果，供 resume 时直接返回，保证幂等。
     // timeout/error 不缓存：这些步骤下次 resume 时应重试。
     if (result.status === "ok" || result.status === "empty" || result.status === "too_many_results") {
@@ -394,6 +442,11 @@ export class HarnessRunner {
     } finally {
       if (timeout) clearTimeout(timeout);
     }
+  }
+
+  private async delay(ms: number): Promise<void> {
+    if (ms <= 0) return;
+    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private async persist(state: RunState): Promise<{ state: RunState; tracePath: string }> {

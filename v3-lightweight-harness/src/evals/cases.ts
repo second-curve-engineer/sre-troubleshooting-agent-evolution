@@ -2,6 +2,19 @@
 import { ToolName } from "../tools/tool-registry.js";
 import { WorkflowRoute } from "../schemas/workflow.js";
 
+/**
+ * Golden Answer：对诊断报告关键字段的结构化预期，作为质量基线。
+ * 关键词需与 mock/LLM 报告的实际输出对齐，换模型或改 prompt 后如有回退可立即检测到。
+ */
+export type GoldenAnswer = {
+  /** finalReport.rootCause 应包含的关键词 */
+  rootCauseKeywords: string[];
+  /** finalReport.fixSuggestions 拼接后应包含的关键词 */
+  fixKeywords: string[];
+  /** finalReport.problemAnalysis 应包含的关键词 */
+  problemAnalysisKeywords: string[];
+};
+
 export type EvalCase = {
   id: string;
   input: string;
@@ -27,6 +40,11 @@ export type EvalCase = {
    * 不设置则跳过 judge（适合无诊断报告或聚焦工具行为的 case）。
    */
   minJudgeScore?: number;
+  /**
+   * Golden Answer：对 finalReport 核心字段的结构化预期，是比 evidence_keywords 更精准的质量门控。
+   * 只对有确定预期根因和修复方向的 case 设置；工具失败/超时等异常场景不设置。
+   */
+  goldenAnswer?: GoldenAnswer;
 };
 
 export const evalCases: EvalCase[] = [
@@ -44,7 +62,12 @@ export const evalCases: EvalCase[] = [
       { toolName: "query_logs_by_trace_id", riskLevel: "low", status: "auto_approved" },
       { toolName: "ask_codebase", riskLevel: "low", status: "auto_approved" }
     ],
-    minJudgeScore: 0.6
+    minJudgeScore: 0.6,
+    goldenAnswer: {
+      rootCauseKeywords: ["NullPointerException", "null"],
+      fixKeywords: ["null"],
+      problemAnalysisKeywords: ["500"]
+    }
   },
   {
     id: "condition_500_no_trace",
@@ -55,7 +78,12 @@ export const evalCases: EvalCase[] = [
     expectedConfidence: "high",
     expectedUsedLlm: false,
     maxRouterTokens: 0,
-    minJudgeScore: 0.6
+    minJudgeScore: 0.6,
+    goldenAnswer: {
+      rootCauseKeywords: ["NullPointerException", "null"],
+      fixKeywords: ["null"],
+      problemAnalysisKeywords: ["500", "ERR_10086"]
+    }
   },
   {
     id: "timeout_504_mysql",
@@ -69,7 +97,12 @@ export const evalCases: EvalCase[] = [
     expectedApprovals: [
       { toolName: "query_mysql_slow_log", riskLevel: "medium", status: "auto_approved" }
     ],
-    minJudgeScore: 0.6
+    minJudgeScore: 0.6,
+    goldenAnswer: {
+      rootCauseKeywords: ["order_item", "索引"],
+      fixKeywords: ["order_item", "索引"],
+      problemAnalysisKeywords: ["504", "慢查询"]
+    }
   },
   {
     id: "insufficient_context",
@@ -153,11 +186,11 @@ export const evalCases: EvalCase[] = [
     maxRouterTokens: 0
   },
   {
-    id: "loop_tool_error",
+    id: "loop_tool_failure",
     input: "order-service 下单接口从 10:30 开始大量 504，模拟日志平台超时，帮我排查。",
     expectedRoute: "performance",
     expectedTools: ["resolve_app", "query_logs_by_condition"],
-    expectedEvidenceKeywords: ["tool_error", "1 轮"],
+    expectedEvidenceKeywords: ["tool_failure", "1 轮"],
     expectedConfidence: "low",
     expectedUsedLlm: false,
     maxRouterTokens: 0,

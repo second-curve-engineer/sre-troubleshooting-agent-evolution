@@ -144,6 +144,45 @@ export function evaluateCase(args: {
     }
   }
 
+  // Golden Answer：对 finalReport 核心字段做结构化关键词比对，比 evidence_keywords 更精准。
+  // 这是质量基线，换模型或改 prompt 后只要 rootCause/fixSuggestions 出现回退立即可见。
+  if (args.testCase.goldenAnswer) {
+    const rootCause = args.state.finalReport?.rootCause ?? "";
+    const fixText = (args.state.finalReport?.fixSuggestions ?? []).join("\n");
+    const analysisText = args.state.finalReport?.problemAnalysis ?? "";
+    const { rootCauseKeywords, fixKeywords, problemAnalysisKeywords } = args.testCase.goldenAnswer;
+
+    const rootCauseMissing = rootCauseKeywords.filter((k) => !rootCause.includes(k));
+    checks.push({
+      name: "golden_root_cause",
+      passed: rootCauseMissing.length === 0,
+      message:
+        rootCauseMissing.length === 0
+          ? `rootCause contains all golden keywords: ${rootCauseKeywords.join(", ")}`
+          : `rootCause missing: ${rootCauseMissing.join(", ")}`
+    });
+
+    const fixMissing = fixKeywords.filter((k) => !fixText.includes(k));
+    checks.push({
+      name: "golden_fix",
+      passed: fixMissing.length === 0,
+      message:
+        fixMissing.length === 0
+          ? `fixSuggestions contains all golden keywords: ${fixKeywords.join(", ")}`
+          : `fixSuggestions missing: ${fixMissing.join(", ")}`
+    });
+
+    const analysisMissing = problemAnalysisKeywords.filter((k) => !analysisText.includes(k));
+    checks.push({
+      name: "golden_analysis",
+      passed: analysisMissing.length === 0,
+      message:
+        analysisMissing.length === 0
+          ? `problemAnalysis contains all golden keywords: ${problemAnalysisKeywords.join(", ")}`
+          : `problemAnalysis missing: ${analysisMissing.join(", ")}`
+    });
+  }
+
   // LLM-as-judge：仅在 testCase 指定了 minJudgeScore 且 runner 传入了 judgeResult 时执行
   if (args.testCase.minJudgeScore !== undefined && args.judgeResult) {
     const minScore = args.testCase.minJudgeScore;

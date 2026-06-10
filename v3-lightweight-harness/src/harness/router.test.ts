@@ -24,6 +24,16 @@ describe("routeWorkflow", () => {
     expect(result.usedLlm).toBe(false);
   });
 
+  it("prioritizes trace diagnosis when trace_id and 504 appear together", async () => {
+    const result = await routeWorkflow(
+      "order-service 下单接口大量 504，trace_id 是 demo-trace-001"
+    );
+
+    expect(result.decision.route).toBe("trace-diagnosis");
+    expect(result.decision.traceId).toBe("demo-trace-001");
+    expect(result.usedLlm).toBe(false);
+  });
+
   it("uses LLM router for low-confidence ambiguous input", async () => {
     const result = await routeWorkflow("订单接口有点卡住，帮我看看");
 

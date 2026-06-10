@@ -1,7 +1,15 @@
 // LLM schema：记录每次模型调用的角色、模型档位、预算和 token 使用。
 import { z } from "zod";
 
-export const LlmRoleSchema = z.enum(["router", "evidence_summarizer", "root_cause", "report", "judge"]);
+export const LlmRoleSchema = z.enum([
+  "router",
+  "evidence_summarizer",
+  "code_analyzer",
+  "root_cause",
+  "report",
+  "judge",
+  "loop_query_refiner"
+]);
 export const ModelTierSchema = z.enum(["rule", "small", "standard", "strong"]);
 export const LlmCallSourceSchema = z.enum(["mock", "llm", "fallback", "skipped"]);
 // OpenInference span kind — 保持与 Phoenix/Arize 可观测性平台的语义兼容。

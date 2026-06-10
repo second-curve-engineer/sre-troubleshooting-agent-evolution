@@ -1,6 +1,7 @@
 // Tool schema：定义工具执行结果和 tool trace，支撑可观测性与 eval。
 import { z } from "zod";
 import { ToolRiskLevelSchema } from "./approval.js";
+import { LlmCallTraceSchema } from "./llm.js";
 
 export const ToolStatusSchema = z.enum(["ok", "empty", "too_many_results", "error", "timeout", "cancelled"]);
 // OpenInference span kind — 保持与 Phoenix/Arize 可观测性平台的语义兼容。
@@ -24,7 +25,11 @@ export const ToolResultSchema = z.object({
   suggestedNextQueries: z.array(z.string()).default([]),
   // 工具输出中命中的领域关键词（如 "OOM"、"slow_query"、"timeout"），
   // workflow 用来触发特定分支逻辑（如自动追查慢查询）。
-  detectedKeywords: z.array(z.string()).default([])
+  detectedKeywords: z.array(z.string()).default([]),
+  // 复合工具内部发生的 LLM 调用，由 Runner 汇总到 run.llmCalls[]。
+  llmCall: LlmCallTraceSchema.optional(),
+  // error 状态是否适合用相同参数做技术重试；timeout 默认由 Runner 视为可重试。
+  retryable: z.boolean().optional()
 });
 
 export const ToolTraceSchema = z.object({
@@ -46,6 +51,7 @@ export const ToolTraceSchema = z.object({
   outputSummary: z.record(z.unknown()),
   status: z.string(),
   timeoutMs: z.number().optional(),
+  attemptCount: z.number().int().positive().default(1),
   timedOut: z.boolean().default(false),
   durationMs: z.number(),
   error: z.string().nullable(),

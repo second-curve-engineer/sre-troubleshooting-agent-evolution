@@ -1,6 +1,6 @@
 // 性能排查 workflow：适用于 504/timeout/慢请求，并包含工具反馈驱动的自我纠偏。
 import { ToolResult } from "../schemas/tool.js";
-import { LoopTerminationReason } from "../harness/policies.js";
+import { QueryLoopTerminationReason } from "../harness/policies.js";
 import { WorkflowDefinition, WorkflowContext } from "./types.js";
 
 export async function runPerformanceDiagnosis(context: WorkflowContext): Promise<void> {
@@ -12,16 +12,16 @@ export async function runPerformanceDiagnosis(context: WorkflowContext): Promise
   const simulateHighRiskRestart = context.state.userMessage.includes("模拟高风险重启");
   const simulateAlwaysTooMany = context.state.userMessage.includes("模拟查询持续过宽");
   let query = "SELECT * WHERE http.status_code = '504'";
-  let retryCount = 0;
+  let refinementCount = 0;
   let logResult: ToolResult;
-  let terminationReason: LoopTerminationReason = "completed";
+  let terminationReason: QueryLoopTerminationReason = "completed";
 
-  // Agent Loop：每轮执行工具 → 观察结果 → 由 policy 决定继续/终止。
-  // 三种标准退出路径：completed（满足条件）、max_iterations（超限）、tool_error（出错）。
+  // 查询迭代：每轮执行工具 → 观察结果 → 必要时调整查询条件。
+  // error/timeout 的同参数技术重试已在 Runner.invokeTool 内完成。
   do {
     logResult = await context.invokeTool(
       context.state,
-      `step-performance-log-${retryCount + 1}`,
+      `step-performance-log-${refinementCount + 1}`,
       "query_logs_by_condition",
       {
         appId,
@@ -30,11 +30,11 @@ export async function runPerformanceDiagnosis(context: WorkflowContext): Promise
         toTime: "2026-05-28 10:35:00",
         env: "prod",
         limit: 5,
-        // 4000ms > TOOL_TIMEOUT_MS(3000ms)，第一轮真正触发 timeout，loop 以 tool_error 退出。
-        ...(simulateLogTimeout && retryCount === 0 ? { __simulateDelayMs: 4000 } : {}),
+        // 4000ms > TOOL_TIMEOUT_MS(3000ms)，技术重试耗尽后查询迭代以 tool_failure 退出。
+        ...(simulateLogTimeout && refinementCount === 0 ? { __simulateDelayMs: 4000 } : {}),
         ...(simulateSensitiveLog ? { __simulateSensitiveLog: true } : {}),
         ...(simulatePromptInjectionLog ? { __simulatePromptInjectionLog: true } : {}),
-        // 每轮都返回 too_many_results，exhausts maxRetries，loop 以 max_iterations 退出。
+        // 每轮都返回 too_many_results，耗尽 maxRefinements 后以 max_iterations 退出。
         ...(simulateAlwaysTooMany ? { __simulateAlwaysTooMany: true } : {})
       },
       ["query_logs_by_condition"]
@@ -54,26 +54,40 @@ export async function runPerformanceDiagnosis(context: WorkflowContext): Promise
     context.evidence.add({
       source: "query_logs_by_condition",
       kind: "log",
-      summary: `[${appId} 第${retryCount + 1}轮] ${logSummary}${securityProbeText}`,
+      summary: `[${appId} 第${refinementCount + 1}轮] ${logSummary}${securityProbeText}`,
       confidence: logResult.status === "ok" ? "high" : "medium",
       usedInFinalReport: true
     });
 
-    if (context.selfCorrectionPolicy.shouldRetry(logResult, retryCount)) {
-      // 未满足条件且未超限：收窄查询条件，进入下一轮。
-      query = context.selfCorrectionPolicy.nextConditionQuery(query, logResult);
-      retryCount += 1;
+    if (context.queryRefinementPolicy.shouldRefineQuery(logResult, refinementCount)) {
+      // 未满足条件且未超限：由 LLM 观察工具结果后决定下一轮查询条件。
+      // openai 模式调用小模型动态决策；mock 模式降级为规则驱动，行为与改造前一致。
+      const refinement = await context.loopQueryRefiner.refine({
+        appId,
+        previousQuery: query,
+        toolResult: logResult,
+        iterationIndex: refinementCount
+      });
+      query = refinement.nextQuery;
+      context.evidence.add({
+        source: "loop_query_refiner",
+        kind: "system",
+        summary: `[第${refinementCount + 1}轮查询收窄] ${refinement.reasoning}，新查询: "${refinement.nextQuery}"`,
+        confidence: "medium",
+        usedInFinalReport: false
+      });
+      refinementCount += 1;
     } else {
       // Loop 退出：由 policy 判断具体原因。
-      terminationReason = context.selfCorrectionPolicy.terminationReason(logResult, retryCount);
+      terminationReason = context.queryRefinementPolicy.terminationReason(logResult, refinementCount);
       break;
     }
-  } while (retryCount <= context.selfCorrectionPolicy.maxRetries);
+  } while (refinementCount <= context.queryRefinementPolicy.maxRefinements);
 
   context.evidence.add({
     source: "self_correction_policy",
     kind: "system",
-    summary: `日志查询 Agent Loop 终止：reason=${terminationReason}，共执行 ${retryCount + 1} 轮，最终查询="${query}"`,
+    summary: `日志查询迭代终止：reason=${terminationReason}，共执行 ${refinementCount + 1} 轮，最终查询="${query}"`,
     confidence: terminationReason === "completed" ? "high" : "medium",
     usedInFinalReport: true
   });

@@ -16,7 +16,13 @@ export const WorkflowDecisionSchema = z.object({
   reason: z.string(),
   traceId: z.string().optional(),
   appHint: z.string().optional(),
-  timeHint: z.string().optional()
+  timeHint: z.string().optional(),
+  // 从告警消息中提取的接口路径，如 "/order/create"
+  interfaceHint: z.string().optional(),
+  // 从告警消息中提取的错误码，如 "ERR_10086" 或 "500"
+  errorCodeHint: z.string().optional(),
+  // 从告警消息中提取的时间窗口（分钟），如 5 表示"最近 5 分钟"
+  timeWindowMin: z.number().optional()
 });
 
 export const RouterResultSchema = z.object({

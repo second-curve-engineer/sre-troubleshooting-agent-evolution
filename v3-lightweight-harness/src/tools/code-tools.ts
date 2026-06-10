@@ -8,6 +8,8 @@ import { readMockJson } from "./data.js";
 import { ROOT_DIR } from "../config/paths.js";
 import { loadLlmConfig } from "../config/env.js";
 import { OpenAiClient } from "../llm/openai-client.js";
+import { resolveModelPolicy, ResolvedModelPolicy } from "../llm/model-policy.js";
+import { LlmCallTrace, TokenUsage } from "../schemas/llm.js";
 import { sanitizeForLlm } from "../security/llm-safety.js";
 
 // ──────────────────────────────────────────────
@@ -149,7 +151,8 @@ async function analyzeWithLlm(args: {
   question: string;
   appId: string;
   slices: FileSlice[];
-}): Promise<string> {
+  policy: ResolvedModelPolicy;
+}): Promise<{ content: string; tokenUsage: TokenUsage }> {
   const config = loadLlmConfig();
   if (config.mode !== "openai" || !config.apiKey) {
     throw new Error("LLM not configured");
@@ -186,17 +189,17 @@ ${safeQuestion.text}
 ${sliceText}`;
 
   const result = await client.complete({
-    model: config.model,
+    model: args.policy.model,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt }
     ],
-    timeoutMs: config.timeoutMs,
+    timeoutMs: args.policy.timeoutMs,
     temperature: 0,
-    maxTokens: 400
+    maxTokens: Math.min(400, args.policy.tokenBudget)
   });
 
-  return result.content;
+  return result;
 }
 
 // ──────────────────────────────────────────────
@@ -259,19 +262,44 @@ async function realAskCodebase(input: {
   const primarySlice = primaryResult.slices[0];
 
   // Step 3：LLM 根因分析（语义）
+  const config = loadLlmConfig();
+  const policy = resolveModelPolicy("code_analyzer", config);
   let analysis: string;
   let llmUsed = false;
+  let llmCall: LlmCallTrace;
   try {
-    analysis = await analyzeWithLlm({
+    const result = await analyzeWithLlm({
       stackTrace: input.stackTrace,
       question: input.question,
       appId: input.appId,
-      slices: allSlices
+      slices: allSlices,
+      policy
     });
+    analysis = result.content;
     llmUsed = true;
-  } catch {
+    llmCall = {
+      role: "code_analyzer",
+      source: "llm",
+      model: policy.model,
+      modelTier: policy.modelTier,
+      tokenBudget: policy.tokenBudget,
+      timeoutMs: policy.timeoutMs,
+      tokenUsage: result.tokenUsage,
+      notes: [policy.reason]
+    };
+  } catch (error) {
     const fileList = allSlices.map((s) => s.relativeFile).join(", ");
     analysis = `已定位源码文件：${fileList}。主异常位于 ${primaryFrame.file}:${primaryFrame.line} (${primaryFrame.method})。LLM 分析不可用，请手动检查上述文件。`;
+    llmCall = {
+      role: "code_analyzer",
+      source: "fallback",
+      model: policy.model,
+      modelTier: policy.modelTier,
+      tokenBudget: policy.tokenBudget,
+      timeoutMs: policy.timeoutMs,
+      error: error instanceof Error ? error.message : String(error),
+      notes: [policy.reason]
+    };
   }
 
   return {
@@ -294,7 +322,8 @@ async function realAskCodebase(input: {
       framesFound: frames.length,
       filesRead: allSlices.length,
       llmUsed
-    }
+    },
+    llmCall
   };
 }
 

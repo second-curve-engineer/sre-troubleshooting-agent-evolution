@@ -21,9 +21,11 @@ export type ModelPolicyContext = {
 const ROLE_DEFAULTS: Record<LlmRole, { tier: ModelTier; budget: number }> = {
   router: { tier: "small", budget: 1000 },
   evidence_summarizer: { tier: "small", budget: 2000 },
+  code_analyzer: { tier: "standard", budget: 2000 },
   root_cause: { tier: "strong", budget: 6000 },
   report: { tier: "standard", budget: 4000 },
-  judge: { tier: "standard", budget: 3000 }
+  judge: { tier: "standard", budget: 3000 },
+  loop_query_refiner: { tier: "small", budget: 500 }
 };
 
 function envString(name: string): string | undefined {
@@ -63,6 +65,8 @@ function roleReason(role: LlmRole, tier: ModelTier, context: ModelPolicyContext)
   }
   if (role === "root_cause") return "根因综合保留给强模型档位";
   if (role === "evidence_summarizer") return "证据压缩使用小模型档位控制上下文成本";
+  if (role === "code_analyzer") return "源码切片后的定向根因分析使用标准模型档位";
+  if (role === "loop_query_refiner") return "Agent Loop 查询收窄决策使用小模型档位，token 预算 500";
   return "评估类调用使用标准模型档位";
 }
 

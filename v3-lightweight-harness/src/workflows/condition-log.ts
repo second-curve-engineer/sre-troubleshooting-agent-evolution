@@ -1,27 +1,49 @@
 // 条件日志 workflow：适用于有报错现象但缺少 trace_id 的接口故障。
+// 支持从告警消息中提取接口名、错误码、时间窗口，动态构造查询条件。
 import { WorkflowDefinition, WorkflowContext } from "./types.js";
+import { resolveTimeRange } from "../harness/router.js";
 import { runTraceDiagnosis } from "./trace-diagnosis.js";
+
+/** 根据 decision 里提取到的信息动态构造日志查询条件 */
+function buildLogQuery(decision: WorkflowContext["state"]["decision"]): string {
+  const parts = ["log.level = 'ERROR'"];
+  if (decision?.errorCodeHint) {
+    // 业务错误码（ERR_xxx）用 error_code 字段；HTTP 状态码用 http.status_code
+    if (/^\d{3}$/.test(decision.errorCodeHint)) {
+      parts.push(`http.status_code = '${decision.errorCodeHint}'`);
+    } else {
+      parts.push(`error_code = '${decision.errorCodeHint}'`);
+    }
+  } else {
+    parts.push("http.status_code = '500'");
+  }
+  if (decision?.interfaceHint) {
+    parts.push(`http.path = '${decision.interfaceHint}'`);
+  }
+  return `SELECT * WHERE ${parts.join(" and ")}`;
+}
 
 export async function runConditionLogDiagnosis(context: WorkflowContext): Promise<void> {
   const appId = context.state.app?.appId ?? "order-service";
+  const decision = context.state.decision;
+
+  // 动态构造查询条件：从告警消息提取的接口名、错误码优先；降级为通用条件
+  const query = buildLogQuery(decision);
+  // 动态计算时间窗口：告警消息里有"最近 N 分钟"则用 N，否则默认最近 10 分钟
+  const { fromTime, toTime } = resolveTimeRange(decision?.timeWindowMin);
+
   const logResult = await context.invokeTool(
     context.state,
     "step-condition-log",
     "query_logs_by_condition",
-    {
-      appId,
-      query: "SELECT * WHERE log.level = 'ERROR' and http.status_code = '500'",
-      fromTime: "2026-05-28 10:30:00",
-      toTime: "2026-05-28 10:35:00",
-      env: "prod"
-    },
+    { appId, query, fromTime, toTime, env: "prod" },
     ["query_logs_by_condition"]
   );
 
   const logSummary = await context.evidenceSummarizer.summarize({
     toolName: "query_logs_by_condition",
     appId,
-    query: "SELECT * WHERE log.level = 'ERROR' and http.status_code = '500'",
+    query,
     toolResult: logResult
   });
   context.evidence.add({

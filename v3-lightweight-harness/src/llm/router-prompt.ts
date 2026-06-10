@@ -1,7 +1,9 @@
 // Router Prompt：集中定义 LLM router 的枚举含义、选择规则和输出约束。
+// LLM router 在完成路由判断的同时，顺带提取接口名、错误码、时间窗口等结构化字段，
+// 一次 LLM 调用同时完成"路由分类"和"信息提取"，结果写入 WorkflowDecision 供下游 workflow 使用。
 export function buildRouterSystemPrompt(): string {
   return [
-    "你是线上故障排查 Agent 的 router。你的任务是把用户输入路由到一个 workflow。",
+    "你是线上故障排查 Agent 的 router。你的任务是把用户输入路由到一个 workflow，并提取关键的上下文信息。",
     "只输出 JSON，不要输出 Markdown 或解释。",
     "",
     "输出 JSON 字段：",
@@ -9,8 +11,11 @@ export function buildRouterSystemPrompt(): string {
     "- route: trace-diagnosis | condition-log | performance | clarification",
     "- reason: 简短说明路由依据",
     "- confidence: 0 到 1 的数字",
-    "- traceId: 可选，如果用户提供了 trace_id",
-    "- appHint: 可选，如果用户提到了服务名、系统名或业务模块",
+    "- traceId: 可选，用户提供的 trace_id",
+    "- appHint: 可选，服务名、系统名或业务模块（如 order-service）",
+    "- interfaceHint: 可选，接口路径（如 /order/create）。从用户描述的接口名、方法名中推断，不要编造。",
+    "- errorCodeHint: 可选，错误码（如 ERR_10086、500）。优先提取业务错误码，其次 HTTP 状态码。",
+    "- timeWindowMin: 可选，数字，时间窗口分钟数（如用户说'最近5分钟'则输出 5）。",
     "",
     "problemType 含义：",
     "- interface_error: 接口报错、500、异常、错误码、NullPointerException、RemoteServiceException 等。",
@@ -31,10 +36,12 @@ export function buildRouterSystemPrompt(): string {
     "",
     "示例：",
     "输入：order-service 下单接口 500，trace_id 是 demo-trace-001",
-    "输出：{\"problemType\":\"interface_error\",\"route\":\"trace-diagnosis\",\"reason\":\"用户提供了 trace_id，可直接查询链路日志\",\"confidence\":0.95,\"traceId\":\"demo-trace-001\",\"appHint\":\"order-service\"}",
+    '输出：{"problemType":"interface_error","route":"trace-diagnosis","reason":"用户提供了 trace_id，可直接查询链路日志","confidence":0.95,"traceId":"demo-trace-001","appHint":"order-service","interfaceHint":"/order/create"}',
+    "输入：order-service 接口 POST /order/create 错误码 ERR_10086，最近 5 分钟错误数 342",
+    '输出：{"problemType":"interface_error","route":"condition-log","reason":"有明确错误码和接口名，无 trace_id，走条件日志查询","confidence":0.92,"appHint":"order-service","interfaceHint":"/order/create","errorCodeHint":"ERR_10086","timeWindowMin":5}',
     "输入：订单接口有点卡住，帮我看看",
-    "输出：{\"problemType\":\"performance\",\"route\":\"performance\",\"reason\":\"卡住通常表示慢请求或超时，需要走性能排查\",\"confidence\":0.82,\"appHint\":\"order-service\"}",
+    '输出：{"problemType":"performance","route":"performance","reason":"卡住通常表示慢请求或超时，需要走性能排查","confidence":0.82,"appHint":"order-service"}',
     "输入：线上接口好像有问题",
-    "输出：{\"problemType\":\"unknown\",\"route\":\"clarification\",\"reason\":\"缺少服务名、时间窗口和明确故障现象\",\"confidence\":0.4}"
+    '输出：{"problemType":"unknown","route":"clarification","reason":"缺少服务名、时间窗口和明确故障现象","confidence":0.4}'
   ].join("\n");
 }
