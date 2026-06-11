@@ -57,7 +57,7 @@
       </a>
       <a class="stat-item stat-link" href="#eval" data-goto="eval">
         <div class="stat-num">12/12</div>
-        <div class="stat-label">Eval Pass</div>
+        <div class="stat-label">Offline Regression</div>
       </a>
       <a class="stat-item stat-link" href="#evo" data-goto="evo">
         <div class="stat-num">V1→V3</div>
@@ -364,14 +364,15 @@
   <p class="section-title">Eval Coverage</p>
   <h2>12 个回归 Case 覆盖什么</h2>
   <p class="sub">
-    这组 eval 将 Agent 的关键风险拆成可回归检查：
+    这组离线回归使用 mock adapter，将 Agent 的关键风险拆成可复现检查：
     <strong>诊断路径、路由成本、Agent Loop、失败降级、安全边界、高风险控制</strong>。
+    真实模型质量使用独立在线评测，不与这里的通过率混报。
   </p>
 
   <div class="eval-summary">
     <div class="eval-summary-card">
       <div class="eval-summary-num">12/12</div>
-      <div class="eval-summary-label">Eval Pass</div>
+      <div class="eval-summary-label">Offline Regression</div>
     </div>
     <div class="eval-summary-card">
       <div class="eval-summary-num">6</div>
@@ -460,7 +461,7 @@
         <li>Self-Correction Policy：工具返回 too_many_results 时在 loop 内收窄重试，可复现可 eval</li>
         <li>HITL Pending-Resume：高风险工具进入 waiting_approval，approve/reject 写入 trace</li>
         <li>Redaction + Prompt Injection Guard：安全边界由代码保证</li>
-        <li>Eval Runner：12 个回归 case，覆盖核心路径 + 失败路径 + Agent Loop + 安全边界 + 高风险工具控制</li>
+        <li>Eval Runner：12 个离线回归 case，覆盖核心路径 + 失败路径 + Agent Loop + 安全边界 + 高风险工具控制</li>
       </ul>
       <div class="evo-why">核心认知：Agent 的价值不在于"调了 LLM"，而在于把不确定的排障流程变成可控、可观测、可评测的工程系统。</div>
     </div>
@@ -476,8 +477,9 @@
       <ul class="evo-points">
         <li>LLM Planner 输出 selectedTool / toolInput / reason / expectedEvidence</li>
         <li>Policy Guard 校验 allowedTools / schema / risk / token budget</li>
-        <li>RecordedAdapter：用历史 trace 模拟真实平台输出，支持 replay</li>
-        <li>PendingRunStore 持久化：server 重启后可恢复 pending approval</li>
+        <li>接入真实日志 / Trace / 慢查询平台 Adapter</li>
+        <li>扩大脱敏 Replay Trace 数据集并接入 CI</li>
+        <li>多实例 PendingRunStore：数据库 CAS / 租约控制并发审批</li>
       </ul>
       <div class="evo-why">原则：LLM 可以获得更多 planning 权重，但执行权仍由 ToolRegistry、allowedTools、schema、risk policy 和 eval 控制。</div>
     </div>

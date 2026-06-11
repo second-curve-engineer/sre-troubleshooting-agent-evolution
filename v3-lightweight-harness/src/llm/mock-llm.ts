@@ -51,11 +51,13 @@ export function generateMockDiagnosis(args: {
     }
 
     return {
-      problemAnalysis: "这是一个 504/timeout 类性能问题，需要先看应用日志，再基于 SQL/MySQL 线索查询慢查询。",
+      problemAnalysis:
+        "这是一个 504/timeout 类性能问题。应用日志显示数据库调用变慢，需要结合 MySQL 慢查询确认具体 SQL。",
       collectedEvidence: evidenceSummaries,
-      rootCause: "当前证据更像 MySQL 慢查询拉长接口响应时间，最终在入口层表现为 504。",
+      rootCause:
+        "当前证据指向 order_item 表查询缺少合适索引，MySQL 慢查询拉长接口响应时间，最终在入口层表现为 504。",
       fixSuggestions: [
-        "检查慢 SQL 涉及表的过滤条件和索引设计。",
+        "检查 order_item 表慢 SQL 的过滤条件，并补充匹配查询条件的联合索引。",
         "对高频查询增加分页、时间窗口限制或联合索引。",
         "在应用日志中补充 db_schema、query_time、rows_examined 等字段。"
       ],
@@ -69,9 +71,11 @@ export function generateMockDiagnosis(args: {
   }
 
   return {
-    problemAnalysis: "这是一个接口报错问题，trace 链路和异常栈可以帮助定位首次报错服务。",
+    problemAnalysis:
+      "这是一个 HTTP 500 接口报错问题；在无 trace_id 场景可先用 ERR_10086 定位 trace，再沿异常栈查找首次报错服务。",
     collectedEvidence: evidenceSummaries,
-    rootCause: "首次异常指向 inventory-service，库存预占逻辑缺少空值保护。",
+    rootCause:
+      "首次异常指向 inventory-service 的 NullPointerException，库存预占逻辑对 inventory 为 null 的情况缺少显式保护。",
     fixSuggestions: [
       "在 InventoryService.reserve 中增加 inventory == null 的显式处理。",
       "返回可识别业务错误，避免 NullPointerException 直接冒泡。",

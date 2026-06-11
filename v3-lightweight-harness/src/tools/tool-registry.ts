@@ -1,6 +1,7 @@
 // Tool Registry：统一注册工具、风险等级和 step 级白名单校验入口。
 import { ToolRiskLevel } from "../schemas/approval.js";
 import { ToolResult } from "../schemas/tool.js";
+import { formatToolInputIssues, ToolInputSchemas } from "../schemas/tool-input.js";
 import { resolveApp } from "./app-tools.js";
 import { askCodebase } from "./code-tools.js";
 import { queryLogsByCondition, queryLogsByTraceId } from "./log-tools.js";
@@ -21,49 +22,43 @@ export type ToolMetadata = {
   description: string;
 };
 
+export type ToolInvocationArgs = {
+  stepId: string;
+  toolName: ToolName;
+  input: Record<string, unknown>;
+  allowedTools: ToolName[];
+};
+
+export interface ToolExecutor {
+  getMetadata(toolName: ToolName): ToolMetadata;
+  validateInvocation(args: Omit<ToolInvocationArgs, "stepId">):
+    | { success: true; input: Record<string, unknown> }
+    | { success: false; result: ToolResult };
+  invoke(args: ToolInvocationArgs): Promise<ToolResult>;
+  assertFullyConsumed?(): void;
+}
+
 const handlers: Record<ToolName, ToolHandler> = {
-  resolve_app: (input) => resolveApp({ query: String(input.query ?? "") }),
+  resolve_app: (input) => resolveApp(ToolInputSchemas.resolve_app.parse(input)),
   query_logs_by_trace_id: (input) =>
-    queryLogsByTraceId({
-      traceId: String(input.traceId ?? ""),
-      env: String(input.env ?? "prod")
-    }),
+    queryLogsByTraceId(ToolInputSchemas.query_logs_by_trace_id.parse(input)),
   query_logs_by_condition: (input) =>
-    queryLogsByCondition({
-      appId: String(input.appId ?? ""),
-      query: String(input.query ?? ""),
-      fromTime: input.fromTime ? String(input.fromTime) : undefined,
-      toTime: input.toTime ? String(input.toTime) : undefined,
-      env: String(input.env ?? "prod"),
-      limit: input.limit ? Number(input.limit) : undefined,
-      __simulateSensitiveLog: Boolean(input.__simulateSensitiveLog),
-      __simulatePromptInjectionLog: Boolean(input.__simulatePromptInjectionLog),
-      __simulateAlwaysTooMany: Boolean(input.__simulateAlwaysTooMany)
-    }),
+    queryLogsByCondition(ToolInputSchemas.query_logs_by_condition.parse(input)),
   query_mysql_slow_log: (input) =>
-    queryMysqlSlowLog({
-      dbNames: Array.isArray(input.dbNames) ? input.dbNames.map(String) : ["order_db"],
-      query: input.query ? String(input.query) : undefined,
-      fromTime: input.fromTime ? String(input.fromTime) : undefined,
-      toTime: input.toTime ? String(input.toTime) : undefined,
-      env: String(input.env ?? "prod")
-    }),
-  ask_codebase: (input) =>
-    askCodebase({
-      appId: String(input.appId ?? ""),
-      codebasePath: input.codebasePath ? String(input.codebasePath) : undefined,
-      question: String(input.question ?? ""),
-      stackTrace: input.stackTrace ? String(input.stackTrace) : undefined
-    }),
-  restart_service: async (input) => ({
-    status: "ok",
-    summary: `模拟高风险动作：已生成 ${String(input.appId ?? "unknown")} 重启执行记录`,
-    outputSummary: {
-      appId: String(input.appId ?? "unknown"),
-      action: "restart_service",
-      dryRun: true
-    }
-  })
+    queryMysqlSlowLog(ToolInputSchemas.query_mysql_slow_log.parse(input)),
+  ask_codebase: (input) => askCodebase(ToolInputSchemas.ask_codebase.parse(input)),
+  restart_service: async (input) => {
+    const parsed = ToolInputSchemas.restart_service.parse(input);
+    return {
+      status: "ok",
+      summary: `模拟高风险动作：已生成 ${parsed.appId} 重启执行记录`,
+      outputSummary: {
+        appId: parsed.appId,
+        action: "restart_service",
+        dryRun: true
+      }
+    };
+  }
 };
 
 const metadata: Record<ToolName, ToolMetadata> = {
@@ -103,28 +98,69 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export class ToolRegistry {
+export class ToolRegistry implements ToolExecutor {
   getMetadata(toolName: ToolName): ToolMetadata {
     return metadata[toolName];
   }
 
+  validateInvocation(args: {
+    toolName: ToolName;
+    input: Record<string, unknown>;
+    allowedTools: ToolName[];
+  }):
+    | { success: true; input: Record<string, unknown> }
+    | { success: false; result: ToolResult } {
+    if (!args.allowedTools.includes(args.toolName)) {
+      return {
+        success: false,
+        result: {
+          status: "error",
+          summary: `工具 ${args.toolName} 不在当前 step 白名单中`,
+          outputSummary: {
+            validationType: "tool_not_allowed",
+            allowedTools: args.allowedTools
+          },
+          retryable: false
+        }
+      };
+    }
+
+    const parsed = ToolInputSchemas[args.toolName].safeParse(args.input);
+    if (!parsed.success) {
+      return {
+        success: false,
+        result: {
+          status: "error",
+          summary: `工具 ${args.toolName} 输入校验失败`,
+          outputSummary: {
+            validationType: "invalid_tool_input",
+            validationIssues: formatToolInputIssues(parsed.error)
+          },
+          retryable: false
+        }
+      };
+    }
+
+    return {
+      success: true,
+      input: parsed.data as Record<string, unknown>
+    };
+  }
+
   async invoke(args: {
+    stepId: string;
     toolName: ToolName;
     input: Record<string, unknown>;
     allowedTools: ToolName[];
   }): Promise<ToolResult> {
-    if (!args.allowedTools.includes(args.toolName)) {
-      return {
-        status: "error",
-        summary: `工具 ${args.toolName} 不在当前 step 白名单中`,
-        outputSummary: { allowedTools: args.allowedTools },
-        retryable: false
-      };
+    const validation = this.validateInvocation(args);
+    if (!validation.success) {
+      return validation.result;
     }
-    if (typeof args.input.__simulateDelayMs === "number") {
-      await sleep(args.input.__simulateDelayMs);
+    if (typeof validation.input.__simulateDelayMs === "number") {
+      await sleep(validation.input.__simulateDelayMs);
     }
-    if (args.input.__simulateFailure) {
+    if (validation.input.__simulateFailure) {
       return {
         status: "error",
         summary: `工具 ${args.toolName} 模拟失败`,
@@ -134,6 +170,6 @@ export class ToolRegistry {
         retryable: true
       };
     }
-    return handlers[args.toolName](args.input);
+    return handlers[args.toolName](validation.input);
   }
 }

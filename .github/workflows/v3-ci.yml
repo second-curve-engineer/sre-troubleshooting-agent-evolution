@@ -1,0 +1,37 @@
+name: V3 CI
+
+on:
+  push:
+    paths:
+      - "v3-lightweight-harness/**"
+      - ".github/workflows/v3-ci.yml"
+  pull_request:
+    paths:
+      - "v3-lightweight-harness/**"
+      - ".github/workflows/v3-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v3-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: v3-lightweight-harness
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: v3-lightweight-harness/package-lock.json
+      - run: npm ci
+      - run: npm run verify

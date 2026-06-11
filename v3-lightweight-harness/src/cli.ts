@@ -1,5 +1,6 @@
 // CLI 入口：负责解析 diagnose/eval 命令，并把 Runner/Eval 的结构化结果渲染到终端。
 import { HarnessRunner } from "./harness/runner.js";
+import { ReplayService } from "./harness/replay-service.js";
 import { renderEvalResults, runEvals } from "./evals/runner.js";
 
 function renderUsage(): void {
@@ -7,6 +8,7 @@ function renderUsage(): void {
   npm run diagnose -- "<故障描述>"
   npm run hitl-demo
   npm run eval
+  npm run replay -- <runId>
 
 Examples:
   # 基础诊断路径
@@ -28,7 +30,10 @@ Examples:
 
   # HITL 路径
   npm run diagnose -- "order-service 下单接口从 10:30 开始大量 504，模拟高风险重启，帮我排查。"
-  npm run hitl-demo`);
+  npm run hitl-demo
+
+  # 使用历史工具输出重跑当前 Harness
+  npm run replay -- run-20260611163237-ca63b2aa`);
 }
 
 function renderReport(result: Awaited<ReturnType<HarnessRunner["run"]>>): void {
@@ -137,6 +142,19 @@ async function main(): Promise<void> {
 
   if (command === "hitl-demo") {
     await runHitlDemo();
+    return;
+  }
+
+  if (command === "replay") {
+    const runId = rest[0]?.trim();
+    if (!runId) {
+      renderUsage();
+      process.exitCode = 1;
+      return;
+    }
+    const result = await new ReplayService().replay(runId);
+    console.log(`replay_source_run_id: ${result.sourceRunId}`);
+    renderReport(result);
     return;
   }
 

@@ -10,6 +10,12 @@ import { RouterResultSchema, WorkflowDecisionSchema } from "./workflow.js";
 
 export const RunStatusSchema = z.enum(["running", "waiting_approval", "completed", "failed"]);
 
+export const ReplayMetadataSchema = z.object({
+  sourceRunId: z.string(),
+  mode: z.literal("recorded"),
+  strictInputMatch: z.literal(true)
+});
+
 export const ReportGenerationTraceSchema = z.object({
   source: z.enum(["mock", "llm", "fallback"]),
   role: z.literal("report").default("report"),
@@ -30,6 +36,7 @@ export const RunStateSchema = z.object({
   agentSpanId: z.string(),
   status: RunStatusSchema.default("running"),
   userMessage: z.string(),
+  replay: ReplayMetadataSchema.optional(),
   decision: WorkflowDecisionSchema.optional(),
   router: RouterResultSchema.optional(),
   app: AppInfoSchema.optional(),
@@ -53,5 +60,6 @@ export const RunStateSchema = z.object({
 });
 
 export type RunStatus = z.infer<typeof RunStatusSchema>;
+export type ReplayMetadata = z.infer<typeof ReplayMetadataSchema>;
 export type ReportGenerationTrace = z.infer<typeof ReportGenerationTraceSchema>;
 export type RunState = z.infer<typeof RunStateSchema>;

@@ -2,4 +2,5 @@ node_modules/
 dist/
 .env
 traces/*.json
+pending-runs/*.json
 !.gitkeep

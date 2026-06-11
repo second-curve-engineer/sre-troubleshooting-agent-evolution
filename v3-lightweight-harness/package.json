@@ -5,13 +5,17 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "diagnose": "npm run build --silent && node --env-file=.env dist/cli.js diagnose",
+    "diagnose": "npm run build --silent && node --env-file-if-exists=.env dist/cli.js diagnose",
     "dev": "npm run diagnose --",
-    "eval": "npm run build --silent && node --env-file=.env dist/cli.js eval",
-    "server": "npm run build --silent && node --env-file=.env dist/server.js",
+    "eval": "npm run eval:offline",
+    "eval:offline": "npm run build --silent && LLM_MODE=mock node --env-file-if-exists=.env dist/cli.js eval",
+    "eval:online": "npm run build --silent && LLM_MODE=openai node --env-file-if-exists=.env dist/cli.js eval",
+    "replay": "npm run build --silent && LLM_MODE=mock node --env-file-if-exists=.env dist/cli.js replay",
+    "server": "npm run build --silent && node --env-file-if-exists=.env dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "hitl-demo": "npm run build --silent && node --env-file=.env dist/cli.js hitl-demo"
+    "verify": "npm run typecheck && npm test && npm run eval:offline",
+    "hitl-demo": "npm run build --silent && node --env-file-if-exists=.env dist/cli.js hitl-demo"
   },
   "dependencies": {
     "zod": "^3.25.0"

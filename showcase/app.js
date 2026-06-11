@@ -430,7 +430,7 @@ const archDetails = {
     title: 'zod validate',
     sections: [
       { heading: '为什么用 zod', body: 'LLM 输出是字符串，直接使用有类型安全风险。zod 在 parse 层强制校验，失败时抛出结构化错误，可以精确 fallback，而不是让错误数据污染下游。' },
-      { heading: '校验点', body: '① Router 输出 RouteDecisionSchema\n② Report 输出 DiagnosisReportSchema\n③ Tool 输入 per-tool input schema（部分已实现）' },
+      { heading: '校验点', body: '① Router 输出 RouteDecisionSchema\n② Report 输出 DiagnosisReportSchema\n③ 六个 Tool 分别使用严格的 per-tool input schema\n④ 校验顺序：allowedTools → schema → approval → execute' },
     ]
   },
   'trace-diagnosis': {
@@ -517,8 +517,8 @@ const archDetails = {
     title: 'restart_service (HITL)',
     sections: [
       { heading: '为什么需要 HITL', body: '重启服务是不可逆操作，会造成 15-30 秒服务中断，影响线上流量。必须人工确认后才能执行。' },
-      { heading: 'ApprovalPolicy 逻辑', code: `// 高风险工具自动进入人工审批\nif (tool.riskLevel === 'high') {\n  state.status = 'waiting_approval'\n  state.pendingApprovalId = approvalId\n  throw new PendingApprovalError()\n}\n// approve → resume()\n// reject  → 生成降级报告` },
-      { heading: 'Trace 记录', body: 'approve/reject 结果写入 trace.approvals[]，可离线复盘。run 恢复后从 pending 步骤继续执行。' },
+      { heading: 'ApprovalPolicy 逻辑', code: `// allowedTools → input schema → approval\nif (tool.riskLevel === 'high') {\n  state.status = 'waiting_approval'\n  await pendingRunStore.save(state)\n  throw new PendingApprovalError()\n}\n\n// 新进程按 approvalId 恢复\nawait runner.resumePending(approvalId, decision)` },
+      { heading: '持久化与恢复', body: 'PendingRunStore 原子写入完整 RunState。服务重启后，新 Runner 可按 approvalId 读取状态；completedSteps 保证已完成工具不重复执行。approve/reject 写入 trace，完成后删除 pending 记录。文件 Store 用于单机 demo，多实例生产环境需要数据库 CAS 或租约。' },
     ]
   },
   'redaction': {
@@ -546,8 +546,8 @@ const archDetails = {
   'mock-mode': {
     title: 'Mock Mode',
     sections: [
-      { heading: '设计意图', body: '默认 mock 保证本地 eval 稳定、可重复。不依赖外部 API，eval 12/12 在无网络环境下也能通过。' },
-      { heading: '切换方式', code: `# .env\nLLM_MODE=openai\nLLM_BASE_URL=https://api.openai.com/v1\nLLM_API_KEY=sk-...\nLLM_MODEL=gpt-4o-mini` },
+      { heading: '设计意图', body: '默认 mock 保证离线回归稳定、可重复。不依赖外部 API，12/12 表示 Harness 固定行为通过，不代表真实模型准确率 100%。' },
+      { heading: '切换方式', code: `# .env\nLLM_MODE=openai\nOPENAI_BASE_URL=https://api.openai.com/v1\nOPENAI_API_KEY=sk-...\nLLM_MODEL=gpt-4.1-mini\n\n# 离线确定性回归\nnpm run eval\n\n# 在线真实模型评测\nnpm run eval:online` },
     ]
   },
   'openai-compatible': {
@@ -567,16 +567,17 @@ const archDetails = {
   'eval-runner': {
     title: 'Eval Runner',
     sections: [
-      { heading: '覆盖范围', body: '12 个 case：\n① 500 + trace_id\n② 500 无 trace_id\n③ 504 + MySQL 慢查询\n④ 信息不足 clarification\n⑤ 模糊慢请求 LLM router\n⑥ 日志平台超时\n⑦ 慢查询平台失败\n⑧ 敏感日志脱敏\n⑨ prompt injection 防护\n⑩ 高风险工具审批控制\n⑪ Agent Loop max_iterations 退出\n⑫ Agent Loop tool_error 退出' },
+      { heading: '覆盖范围', body: '12 个离线 case：\n① 500 + trace_id\n② 500 无 trace_id\n③ 504 + MySQL 慢查询\n④ 信息不足 clarification\n⑤ 模糊慢请求 LLM router\n⑥ 日志平台超时\n⑦ 慢查询平台失败\n⑧ 敏感日志脱敏\n⑨ prompt injection 防护\n⑩ 高风险工具审批控制\n⑪ Agent Loop max_iterations 退出\n⑫ Agent Loop tool_error 退出\n\n在线模式单独运行真实 router、report 和 judge，结果按模型与运行批次统计。' },
       { heading: '检查维度', code: `metrics.check(run, {\n  route: 'performance',\n  toolOrder: ['resolve_app', 'query_logs_by_condition', ...],\n  evidenceKeywords: ['HikariPool', 'P99'],\n  confidence: c => c === 'high',\n  routerUsedLlm: false,\n  tokenBudget: { router: 1000 },\n})` },
     ]
   },
   'replay': {
-    title: 'Replay（待实现）',
+    title: 'Recorded Replay',
     sections: [
-      { heading: '设计目标', body: '从历史 trace 重放一次 run，RecordedAdapter 读取历史 tool output 代替真实平台调用。' },
-      { heading: '用途', body: '① 复现线上故障\n② 验证 harness 逻辑变更是否影响已知路径\n③ 把失败 trace 直接转成 eval case' },
-      { heading: '当前状态', body: 'Trace 结构已包含重放所需的全部信息（tool input/output、router decision、workflow steps），RecordedAdapter 接口已规划，实现列为 next 优先级。', warn: true },
+      { heading: '工作方式', body: '读取历史 Trace 的用户输入和 ToolResult，用当前版本重新执行 Router、Workflow、Policy、Evidence 与 Report。不会复制旧报告，也不会访问真实外部系统。' },
+      { heading: '严格匹配', code: `recorded.match({\n  stepId,\n  toolName,\n  normalizedInput,\n})\n\n// 多调用、少调用、参数漂移、attempt 次数变化\n// 均立即失败，不允许 fallback live tool` },
+      { heading: '安全边界', body: 'high/critical 工具如果历史上真实执行成功，Replay 直接拒绝。pending/rejected 只代表审批控制流，没有调用外部 handler。' },
+      { heading: '运行方式', code: `npm run replay -- <runId>\n\nPOST /api/traces/:runId/replay` },
     ]
   },
 };

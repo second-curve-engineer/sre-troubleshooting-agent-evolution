@@ -20,7 +20,7 @@ function summarizeInput(input: Record<string, unknown>): Record<string, unknown>
 export class ApprovalPolicy {
   constructor(private readonly mode: ApprovalMode = "auto") {}
 
-  // 当前是 HITL 后端雏形：所有工具先生成审批记录，再决定是否允许执行。
+  // 当前是 HITL 后端雏形：通过白名单和输入 schema 校验后，再生成审批记录。
   evaluate(args: {
     runId: string;
     stepId: string;

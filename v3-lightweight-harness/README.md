@@ -18,6 +18,8 @@ npm install
 npm run diagnose -- "prod 环境 order-service 下单接口从 10:30 开始大量 500，trace_id 是 demo-trace-001，帮我排查。"
 npm run diagnose -- "order-service 下单接口从 10:30 开始大量 504，帮我排查。"
 npm run eval
+npm run eval:online
+npm run replay -- <runId>
 npm run server
 ```
 
@@ -28,6 +30,18 @@ npm run server
 ```bash
 http://127.0.0.1:4317
 ```
+
+## Eval 运行口径
+
+评测分为两个模式，结果不能混报：
+
+- `npm run eval` / `npm run eval:offline`：强制使用 mock adapter，验证 route、tool order、
+  failure handling、HITL、redaction、golden answer 和 token budget。该模式确定、可复现，
+  适合本地回归、CI 和面试现场演示。
+- `npm run eval:online`：强制使用 OpenAI-compatible API，同时运行真实 router/report/judge。
+  该模式用于观察模型质量、稳定性和 prompt 回归，结果会受模型版本、网络和供应商状态影响。
+
+对外描述时应分别报告离线回归通过率和在线评测结果，不能用离线通过率代表真实模型准确率。
 
 ## 当前已实现
 
@@ -40,11 +54,16 @@ http://127.0.0.1:4317
 - LLM adapter：router/report 共用一套 `LlmConfig`；默认使用 mock，设置 `LLM_MODE=openai` 后可调用 OpenAI-compatible API。
 - ModelPolicy：在统一 LLM 配置之上，按 router/report 等 Agent 阶段记录模型档位、预算和 token 使用。
 - step 级工具白名单。
+- per-tool Zod input schema：白名单通过后、审批前校验必填字段、类型、环境枚举、
+  时间窗口、limit、代码路径和高风险动作原因；非法输入写入 trace 且不进入审批。
 - tool risk level + approval policy：低/中风险工具自动审批并进入 trace，高风险工具进入 HITL pending-resume。
-- HITL pending-resume：高风险工具会暂停 run，审批通过后 resume，拒绝后不执行。
+- HITL pending-resume：高风险工具会暂停 run；`PendingRunStore` 原子写入完整 RunState，
+  API Server 重启后可按 approvalId 恢复。审批通过后精准 resume，拒绝后不执行，完成后删除 pending 记录。
 - tool timeout / failure handling：工具超时或失败会进入 trace 和 eval，不让 run 直接崩溃。
 - redaction / prompt-injection boundary：进入 LLM/报告前脱敏，并把日志里的 prompt injection 标记为数据。
 - trace JSON 持久化。
+- Recorded Replay：按历史 trace 的 `stepId + toolName + toolInput` 返回固定 ToolResult，
+  用相同外部证据重跑当前 Router / Workflow / Policy / Report；路径、参数或调用次数漂移会显式失败。
 - API server + Trace Viewer：支持发起诊断、查看历史 trace、复盘 tool/LLM/evidence，并演示 HITL approve/reject。
 - 504 场景下的初版 self-correction policy。
 - eval runner：检查 route、tool order、tool status、redaction、prompt injection、evidence keywords、report fields、router token budget。
@@ -118,8 +137,35 @@ npm run server
 - `POST /api/diagnose`：发起一次诊断。
 - `GET /api/traces`：查看最近 trace 列表。
 - `GET /api/traces/:runId`：读取单次 run trace。
+- `POST /api/traces/:runId/replay`：使用历史工具结果重放当前 Harness。
 - `POST /api/approvals/:approvalId/approve`：批准 pending 高风险工具。
 - `POST /api/approvals/:approvalId/reject`：拒绝 pending 高风险工具。
+
+Pending run 默认写入 `pending-runs/`，可通过环境变量覆盖：
+
+```bash
+export PENDING_RUN_DIR=pending-runs
+```
+
+当前文件型 Store 面向单机 demo。生产多实例应替换为数据库或共享 KV，并通过版本号/CAS、
+事务或租约保证同一个 approval 只能被一个 worker 消费。
+
+## Recorded Replay
+
+```bash
+npm run replay -- run-20260611163237-ca63b2aa
+```
+
+Replay 不复制旧报告，也不会重新调用日志平台、数据库或代码平台：
+
+1. 读取历史 Trace 中的用户输入、工具输入、工具结果和 attemptCount。
+2. 当前版本重新执行 Router、Workflow、Self-Correction、Evidence 和报告生成。
+3. RecordedToolAdapter 按 `stepId + toolName + 规范化 input` 返回历史 ToolResult。
+4. 当前路径多调用、少调用、参数变化或调用次数变化都会失败，暴露 Harness 行为回归。
+
+历史中已经真实执行成功的 high/critical 工具禁止 replay。审批阶段被 pending/rejected 的工具
+没有进入外部 handler，不作为 recorded invocation 消费。生产环境还应给 Trace 加 adapter、
+schema、prompt 和 model 版本，支持跨版本兼容判断。
 
 Trace Viewer 沿用 V2 的双栏控制台风格：左侧是诊断输入和报告，右侧展示 run summary、tool path、LLM calls、evidence 和历史 traces。
 

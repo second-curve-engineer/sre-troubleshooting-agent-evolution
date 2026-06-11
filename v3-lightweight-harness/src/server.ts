@@ -5,7 +5,9 @@ import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { z } from "zod";
 import { ApprovalMode } from "./harness/approval-policy.js";
+import { PendingRunNotFoundError } from "./harness/pending-run-store.js";
 import { HarnessRunner } from "./harness/runner.js";
+import { ReplayService } from "./harness/replay-service.js";
 import { TraceStore } from "./harness/trace-store.js";
 import { RunState } from "./schemas/run.js";
 
@@ -19,13 +21,7 @@ const DiagnoseRequestSchema = z.object({
   approvalMode: z.enum(["auto", "strict"]).optional()
 });
 
-type PendingRun = {
-  runner: HarnessRunner;
-  state: RunState;
-};
-
 const traces = new TraceStore();
-const pendingRuns = new Map<string, PendingRun>();
 
 function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {
   response.writeHead(statusCode, {
@@ -62,6 +58,7 @@ function summarizeState(state: RunState, tracePath?: string): Record<string, unk
     llmCalls: state.llmCalls,
     reportGeneration: state.reportGeneration,
     finalReport: state.finalReport,
+    replay: state.replay,
     tracePath
   };
 }
@@ -72,13 +69,6 @@ async function handleDiagnose(request: IncomingMessage, response: ServerResponse
   const runner = new HarnessRunner({ approvalMode });
   const result = await runner.run(body.message, body.sessionId ?? "web");
 
-  if (result.state.status === "waiting_approval" && result.state.pendingApprovalId) {
-    pendingRuns.set(result.state.pendingApprovalId, {
-      runner,
-      state: result.state
-    });
-  }
-
   sendJson(response, 200, summarizeState(result.state, result.tracePath));
 }
 
@@ -87,26 +77,17 @@ async function handleApproval(
   decision: "approved" | "rejected",
   response: ServerResponse
 ): Promise<void> {
-  const pending = pendingRuns.get(approvalId);
-  if (!pending) {
-    sendError(response, 404, `pending approval ${approvalId} not found`);
-    return;
+  const runner = new HarnessRunner({ approvalMode: "strict" });
+  try {
+    const result = await runner.resumePending(approvalId, decision);
+    sendJson(response, 200, summarizeState(result.state, result.tracePath));
+  } catch (error) {
+    if (error instanceof PendingRunNotFoundError) {
+      sendError(response, 404, error.message);
+      return;
+    }
+    throw error;
   }
-
-  const result = await pending.runner.resume(pending.state, {
-    approvalId,
-    decision
-  });
-  pendingRuns.delete(approvalId);
-
-  if (result.state.status === "waiting_approval" && result.state.pendingApprovalId) {
-    pendingRuns.set(result.state.pendingApprovalId, {
-      runner: pending.runner,
-      state: result.state
-    });
-  }
-
-  sendJson(response, 200, summarizeState(result.state, result.tracePath));
 }
 
 async function serveStatic(pathname: string, response: ServerResponse): Promise<void> {
@@ -154,6 +135,16 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
     const approvalMatch = pathname.match(/^\/api\/approvals\/([^/]+)\/(approve|reject)$/);
     if (request.method === "POST" && approvalMatch) {
       await handleApproval(approvalMatch[1], approvalMatch[2] === "approve" ? "approved" : "rejected", response);
+      return;
+    }
+
+    const replayMatch = pathname.match(/^\/api\/traces\/([^/]+)\/replay$/);
+    if (request.method === "POST" && replayMatch) {
+      const result = await new ReplayService(traces).replay(replayMatch[1]);
+      sendJson(response, 200, {
+        sourceRunId: result.sourceRunId,
+        ...summarizeState(result.state, result.tracePath)
+      });
       return;
     }
 

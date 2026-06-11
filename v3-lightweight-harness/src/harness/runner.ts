@@ -7,7 +7,8 @@ import { RunState } from "../schemas/run.js";
 import { ToolResult, ToolTrace } from "../schemas/tool.js";
 import { RunTrace } from "../schemas/trace.js";
 import { redactUnknown } from "../security/redaction.js";
-import { ToolName, ToolRegistry } from "../tools/tool-registry.js";
+import { ToolExecutor, ToolName, ToolRegistry } from "../tools/tool-registry.js";
+import { RecordedAdapterError } from "../tools/recorded-adapter.js";
 import { createDiagnosisGenerator, DiagnosisGenerator } from "../llm/report-adapter.js";
 import { createEvidenceSummarizer, EvidenceSummarizer } from "../llm/evidence-summarizer.js";
 import { createLoopQueryRefiner, LoopQueryRefiner } from "../llm/loop-decision-adapter.js";
@@ -24,9 +25,10 @@ import { EvidenceStore } from "./evidence-store.js";
 import { QueryRefinementPolicy } from "./policies.js";
 import { routeWorkflow } from "./router.js";
 import { TraceStore } from "./trace-store.js";
+import { PendingRunNotFoundError, PendingRunStore } from "./pending-run-store.js";
 
 export class HarnessRunner {
-  private readonly tools = new ToolRegistry();
+  private readonly tools: ToolExecutor;
   private readonly traces = new TraceStore();
   private readonly queryRefinementPolicy = new QueryRefinementPolicy();
   private readonly approvalPolicy: ApprovalPolicy;
@@ -35,12 +37,16 @@ export class HarnessRunner {
   private readonly evidenceSummarizer: EvidenceSummarizer;
   private readonly rootCauseAnalyzer: RootCauseAnalyzer;
   private readonly loopQueryRefiner: LoopQueryRefiner;
+  private readonly pendingRuns: PendingRunStore;
 
   constructor(options: {
     approvalMode?: ApprovalMode;
     toolExecution?: Partial<ToolExecutionConfig>;
     diagnosisGenerator?: DiagnosisGenerator;
+    pendingRunStore?: PendingRunStore;
+    toolExecutor?: ToolExecutor;
   } = {}) {
+    this.tools = options.toolExecutor ?? new ToolRegistry();
     this.approvalPolicy = new ApprovalPolicy(options.approvalMode ?? "auto");
     this.toolExecution = {
       ...loadToolExecutionConfig(),
@@ -50,9 +56,14 @@ export class HarnessRunner {
     this.evidenceSummarizer = createEvidenceSummarizer();
     this.rootCauseAnalyzer = createRootCauseAnalyzer();
     this.loopQueryRefiner = createLoopQueryRefiner();
+    this.pendingRuns = options.pendingRunStore ?? new PendingRunStore();
   }
 
-  async run(userMessage: string, sessionId = "cli"): Promise<{ state: RunState; tracePath: string }> {
+  async run(
+    userMessage: string,
+    sessionId = "cli",
+    options: { replayOfRunId?: string } = {}
+  ): Promise<{ state: RunState; tracePath: string }> {
     const runId = `run-${new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${randomUUID().slice(0, 8)}`;
     // agentSpanId 是本次 run 的根 Agent Span，所有 toolTraces 和 llmCalls 的 parentSpanId 均指向它。
     const agentSpanId = randomUUID();
@@ -62,6 +73,13 @@ export class HarnessRunner {
       agentSpanId,
       status: "running",
       userMessage,
+      replay: options.replayOfRunId
+        ? {
+            sourceRunId: options.replayOfRunId,
+            mode: "recorded",
+            strictInputMatch: true
+          }
+        : undefined,
       approvals: [],
       completedSteps: {},
       evidence: [],
@@ -112,6 +130,7 @@ export class HarnessRunner {
 
     try {
       await workflow.execute(workflowContext);
+      this.tools.assertFullyConsumed?.();
       state.status = "completed";
     } catch (caught) {
       if (caught instanceof PendingApprovalError) {
@@ -165,11 +184,26 @@ export class HarnessRunner {
       });
       state.evidence = evidence.list();
       await this.generateDiagnosis(state);
-      return this.persist(state);
+      const result = await this.persist(state);
+      await this.pendingRuns.delete(args.approvalId);
+      return result;
     }
 
     state.status = "running";
-    return this.continueRun(state);
+    const result = await this.continueRun(state);
+    await this.pendingRuns.delete(args.approvalId);
+    return result;
+  }
+
+  async resumePending(
+    approvalId: string,
+    decision: Extract<ApprovalStatus, "approved" | "rejected">
+  ): Promise<{ state: RunState; tracePath: string }> {
+    const pending = await this.pendingRuns.read(approvalId);
+    if (!pending) {
+      throw new PendingRunNotFoundError(approvalId);
+    }
+    return this.resume(pending.state, { approvalId, decision });
   }
 
   private async continueRun(state: RunState): Promise<{ state: RunState; tracePath: string }> {
@@ -259,120 +293,134 @@ export class HarnessRunner {
     let error: string | null = null;
     let timedOut = false;
     let attemptCount = 0;
+    let executionInput = input;
     try {
       const metadata = this.tools.getMetadata(toolName);
-      const existingApproval = [...state.approvals]
-        .reverse()
-        .find((approval) => approval.stepId === stepId && approval.toolName === toolName);
-      const approval = existingApproval ?? this.approvalPolicy.evaluate({
-        runId: state.runId,
-        stepId,
-        toolName,
-        riskLevel: metadata.riskLevel,
-        input
-      });
-      if (!existingApproval) {
-        state.approvals.push(approval);
-      }
+      const validation = this.tools.validateInvocation({ toolName, input, allowedTools });
+      if (!validation.success) {
+        result = validation.result;
+        error = result.summary;
+        attemptCount = 1;
+      } else {
+        executionInput = validation.input;
+        const existingApproval = [...state.approvals]
+          .reverse()
+          .find((approval) => approval.stepId === stepId && approval.toolName === toolName);
+        const approval =
+          existingApproval ??
+          this.approvalPolicy.evaluate({
+            runId: state.runId,
+            stepId,
+            toolName,
+            riskLevel: metadata.riskLevel,
+            input: executionInput
+          });
+        if (!existingApproval) {
+          state.approvals.push(approval);
+        }
 
-      // 所有工具调用先过 approval policy，再进入 registry，保证风险控制和 trace 记录一致。
-      if (approval.status === "pending") {
-        const trace: ToolTrace = {
-          spanId: randomUUID(),
-          parentSpanId: state.agentSpanId,
-          startTime,
-          spanKind: "TOOL",
-          runId: state.runId,
-          stepId,
-          toolName,
-          riskLevel: metadata.riskLevel,
-          approvalStatus: approval.status,
-          toolInput: redactUnknown(input) as Record<string, unknown>,
-          outputSummary: {
-            approvalId: approval.approvalId,
-            riskLevel: metadata.riskLevel
-          },
-          status: "cancelled",
-          timeoutMs: this.toolExecution.timeoutMs,
-          attemptCount: 1,
-          timedOut: false,
-          durationMs: Math.round(performance.now() - start),
-          error: `工具 ${toolName} 等待人工审批`,
-          usedForDecision: true
-        };
-        state.toolTraces.push(trace);
-        throw new PendingApprovalError(approval.approvalId, stepId, toolName);
-      }
-
-      if (!this.approvalPolicy.canExecute(approval)) {
-        result = {
-          status: "cancelled",
-          summary: `工具 ${toolName} 风险等级 ${metadata.riskLevel}，审批状态 ${approval.status}，未执行`,
-          outputSummary: {
+        // 只有通过白名单和 schema 校验的调用才能进入审批，避免审批非法参数。
+        if (approval.status === "pending") {
+          const trace: ToolTrace = {
+            spanId: randomUUID(),
+            parentSpanId: state.agentSpanId,
+            startTime,
+            spanKind: "TOOL",
+            runId: state.runId,
+            stepId,
+            toolName,
             riskLevel: metadata.riskLevel,
             approvalStatus: approval.status,
-            approvalId: approval.approvalId
-          }
-        };
-        const trace: ToolTrace = {
-          spanId: randomUUID(),
-          parentSpanId: state.agentSpanId,
-          startTime,
-          spanKind: "TOOL",
-          runId: state.runId,
-          stepId,
-          toolName,
-          riskLevel: metadata.riskLevel,
-          approvalStatus: approval.status,
-          toolInput: redactUnknown(input) as Record<string, unknown>,
-          outputSummary: redactUnknown(result.outputSummary ?? {}) as Record<string, unknown>,
-          status: result.status,
-          timeoutMs: this.toolExecution.timeoutMs,
-          attemptCount: 1,
-          timedOut: false,
-          durationMs: Math.round(performance.now() - start),
-          error: result.summary,
-          usedForDecision: true
-        };
-        state.toolTraces.push(trace);
-        return result;
-      }
-
-      do {
-        attemptCount += 1;
-        error = null;
-        timedOut = false;
-        try {
-          result = await this.withTimeout(
-            this.tools.invoke({ toolName, input, allowedTools }),
-            this.toolExecution.timeoutMs,
-            toolName
-          );
-        } catch (caught) {
-          error = caught instanceof Error ? caught.message : String(caught);
-          timedOut = caught instanceof ToolTimeoutError;
-          result = {
-            status: timedOut ? "timeout" : "error",
-            summary: error,
-            outputSummary: timedOut
-              ? {
-                  timeoutMs: this.toolExecution.timeoutMs
-                }
-              : {},
-            retryable: true
+            toolInput: redactUnknown(executionInput) as Record<string, unknown>,
+            outputSummary: {
+              approvalId: approval.approvalId,
+              riskLevel: metadata.riskLevel
+            },
+            status: "cancelled",
+            timeoutMs: this.toolExecution.timeoutMs,
+            attemptCount: 1,
+            timedOut: false,
+            durationMs: Math.round(performance.now() - start),
+            error: `工具 ${toolName} 等待人工审批`,
+            usedForDecision: true
           };
+          state.toolTraces.push(trace);
+          throw new PendingApprovalError(approval.approvalId, stepId, toolName);
         }
 
-        const retryable =
-          result.status === "timeout" ||
-          (result.status === "error" && result.retryable !== false);
-        if (!retryable || attemptCount >= this.toolExecution.maxAttempts) {
-          break;
+        if (!this.approvalPolicy.canExecute(approval)) {
+          result = {
+            status: "cancelled",
+            summary: `工具 ${toolName} 风险等级 ${metadata.riskLevel}，审批状态 ${approval.status}，未执行`,
+            outputSummary: {
+              riskLevel: metadata.riskLevel,
+              approvalStatus: approval.status,
+              approvalId: approval.approvalId
+            }
+          };
+          const trace: ToolTrace = {
+            spanId: randomUUID(),
+            parentSpanId: state.agentSpanId,
+            startTime,
+            spanKind: "TOOL",
+            runId: state.runId,
+            stepId,
+            toolName,
+            riskLevel: metadata.riskLevel,
+            approvalStatus: approval.status,
+            toolInput: redactUnknown(executionInput) as Record<string, unknown>,
+            outputSummary: redactUnknown(result.outputSummary ?? {}) as Record<string, unknown>,
+            status: result.status,
+            timeoutMs: this.toolExecution.timeoutMs,
+            attemptCount: 1,
+            timedOut: false,
+            durationMs: Math.round(performance.now() - start),
+            error: result.summary,
+            usedForDecision: true
+          };
+          state.toolTraces.push(trace);
+          return result;
         }
-        await this.delay(this.toolExecution.retryDelayMs);
-      } while (attemptCount < this.toolExecution.maxAttempts);
+
+        do {
+          attemptCount += 1;
+          error = null;
+          timedOut = false;
+          try {
+            result = await this.withTimeout(
+              this.tools.invoke({ stepId, toolName, input: executionInput, allowedTools }),
+              this.toolExecution.timeoutMs,
+              toolName
+            );
+          } catch (caught) {
+            if (caught instanceof RecordedAdapterError) {
+              throw caught;
+            }
+            error = caught instanceof Error ? caught.message : String(caught);
+            timedOut = caught instanceof ToolTimeoutError;
+            result = {
+              status: timedOut ? "timeout" : "error",
+              summary: error,
+              outputSummary: timedOut
+                ? {
+                    timeoutMs: this.toolExecution.timeoutMs
+                  }
+                : {},
+              retryable: true
+            };
+          }
+
+          const retryable =
+            result.status === "timeout" ||
+            (result.status === "error" && result.retryable !== false);
+          if (!retryable || attemptCount >= this.toolExecution.maxAttempts) {
+            break;
+          }
+          await this.delay(this.toolExecution.retryDelayMs);
+        } while (attemptCount < this.toolExecution.maxAttempts);
+      }
     } catch (caught) {
-      if (caught instanceof PendingApprovalError) {
+      if (caught instanceof PendingApprovalError || caught instanceof RecordedAdapterError) {
         throw caught;
       }
       error = caught instanceof Error ? caught.message : String(caught);
@@ -400,7 +448,7 @@ export class HarnessRunner {
       approvalStatus: [...state.approvals]
         .reverse()
         .find((approval) => approval.stepId === stepId && approval.toolName === toolName)?.status,
-      toolInput: redactUnknown(input) as Record<string, unknown>,
+      toolInput: redactUnknown(executionInput) as Record<string, unknown>,
       outputSummary: redactUnknown(result.outputSummary ?? {}) as Record<string, unknown>,
       status: result.status,
       timeoutMs: this.toolExecution.timeoutMs,
@@ -456,6 +504,9 @@ export class HarnessRunner {
       run: state
     };
     const tracePath = await this.traces.save(trace);
+    if (state.status === "waiting_approval") {
+      await this.pendingRuns.save(state);
+    }
     return { state, tracePath };
   }
 }
